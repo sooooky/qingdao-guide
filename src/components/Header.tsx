@@ -1,6 +1,15 @@
 import React from 'react';
 import { Download, RefreshCw, Menu, Share2 } from 'lucide-react';
 import { TabKey, TABS } from './Navigation';
+import { SyncStatus } from '../hooks/useRoomSync';
+
+const SYNC_DOT: Record<SyncStatus, { className: string; label: string } | null> = {
+  off: null,
+  connecting: { className: 'bg-slate-400 animate-pulse', label: '연결 중' },
+  live: { className: 'bg-emerald-400 animate-pulse', label: '실시간 연동 중' },
+  offline: { className: 'bg-orange-400', label: '오프라인 (연결되면 자동 동기화)' },
+  error: { className: 'bg-red-500', label: '동기화 오류' },
+};
 
 interface HeaderProps {
   onOpenNav: () => void;
@@ -11,7 +20,7 @@ interface HeaderProps {
   vaultCount: number;
   onReset: () => void;
   exchangeRate: number;
-  isLiveConnected?: boolean;
+  syncStatus?: SyncStatus;
   roomId?: string;
 }
 
@@ -24,9 +33,10 @@ export const Header: React.FC<HeaderProps> = ({
   vaultCount,
   onReset,
   exchangeRate,
-  isLiveConnected = true,
+  syncStatus = 'off',
   roomId,
 }) => {
+  const syncDot = SYNC_DOT[syncStatus];
   const currentTabInfo = TABS.find((t) => t.key === currentTab);
   const CurrentIcon = currentTabInfo?.icon;
 
@@ -74,10 +84,10 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Share2 className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-[11px] whitespace-nowrap font-extrabold">공유하기</span>
-            {isLiveConnected && (
+            {syncDot && (
               <span
-                className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
-                title={`실시간 연동 중 (방: ${roomId || ''})`}
+                className={`w-2 h-2 rounded-full ${syncDot.className}`}
+                title={`${syncDot.label} (방: ${roomId || ''})`}
               />
             )}
           </button>

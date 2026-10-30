@@ -16,6 +16,7 @@ npm run dev                      # Vite dev server
 npm run build                    # production build to dist/
 npm run preview                  # serve the built dist/
 npx tsc --noEmit                 # type-check (no script for this; build does not type-check)
+VITE_FIREBASE_EMULATOR=1 npm run dev   # use local Firebase emulators (auth:9099, firestore:8080)
 ```
 
 - There is no test suite.
@@ -32,12 +33,18 @@ npx tsc --noEmit                 # type-check (no script for this; build does no
 
 - localStorage keys are in `STORAGE_KEYS` and are versioned (`_v5`). Changing the shape of a persisted type in a breaking way means bumping the suffix (old data then silently falls back to defaults).
 - Initial/seed data for every slice comes from `src/data/initialData.ts` (real Qingdao places with `lat/lng`, Chinese addresses `addressCn`, pinyin). "Reset" in the header clears storage and restores these constants. Some exports there (`TAXI_CARDS`, `BEER_GUIDE`, `FOOD_DELICACIES`, `EMERGENCY_CONTACTS`) are static reference data imported directly by components, not part of App state.
-- Adding a new persisted slice requires touching several places in `App.tsx`: `STORAGE_KEYS`, the lazy `useState` initializer, a persistence `useEffect`, `handleResetData`, and `handleImportBackup` (JSON backup/restore in `BackupModal`). Also consider `RoomData` in `utils/firebase.ts`.
+- Adding a new persisted slice requires touching several places in `App.tsx`: `STORAGE_KEYS`, the lazy `useState` initializer, a persistence `useEffect`, `handleResetData`, and `handleImportBackup` (JSON backup/restore in `BackupModal`). If it should be shared in rooms, also add it to `SharedState`/`LIST_KEYS`/`VALUE_KEYS`/`RoomData` in `utils/firebase.ts`, the `sharedState` + `onRemoteChange` wiring in `App.tsx`, and the allowed keys in `firestore.rules`.
 - Cross-tab actions (e.g. adding a food place or wishlist item into a day's schedule) are implemented as handlers in `App.tsx` that build a `ScheduleItem` and append it after the last item of that day.
 
 **Schedule timing model.** `ScheduleItem` has `startTime` ('HH:MM'), `durationMinutes`, and `transitMinutes`. `recalculateCascade` in `src/utils/geo.ts` recomputes each item's start time from the previous item's end + transit; times wrap at 24h via `minutesToTime`.
 
 **Attachments.** Images (vouchers, tickets, QR codes) are compressed with `compressImageFile` (`utils/attachmentStorage.ts`) and stored inline as base64 `dataUrl` inside `ScheduleItem.attachments`, i.e. in the itinerary's localStorage entry (watch the ~5MB quota). The IndexedDB helpers in the same file (`saveAttachmentToDB`, etc.) exist but are currently unused.
+
+**Real-time rooms (Firebase).** No login: anonymous auth + a room ID shared as a `?room=` link (`ShareModal`). `src/hooks/useRoomSync.ts` syncs the shared slices (itinerary, backup pool, expenses, food places, wishlist, members, exchange rate) with Firestore doc `rooms/{roomId}`; checklist, phrases and attachments are never shared. localStorage stays the primary store, Firestore is layered on top.
+- Lists are stored as maps `{ [itemId]: item + _order }` and written per item via `updateDoc` field paths, so concurrent edits to different items merge (same item: last write wins). Attachments are stripped before upload and re-attached by id on receive.
+- The first snapshot after entering a room overwrites local shared data (join = overwrite). Later snapshots are 3-way merged against the last-synced base so unsent local edits are kept; local edits are diffed against that base and flushed with an 800ms debounce.
+- Firestore persistent cache is enabled so the app works offline (Google services are often blocked in mainland China) and queued writes are sent on reconnect.
+- `firestore.rules` must be published in the Firebase console, and Anonymous sign-in must be enabled, for rooms to work.
 
 **Chinese-language helpers.**
 - `utils/translator.ts`: Korean → Simplified Chinese + pinyin + English via the unofficial `translate.googleapis.com` (`client=gtx`) endpoint, with a built-in Korean-keyed offline dictionary as fallback.
@@ -48,6 +55,4 @@ npx tsc --noEmit                 # type-check (no script for this; build does no
 
 ## Known gaps / gotchas
 
-- **Firebase real-time sync is not wired up.** `utils/firebase.ts` (Firestore `rooms/{roomId}` doc + anonymous auth, `subscribeToRoom`/`saveRoomData`) and `components/ShareModal.tsx` (`?room=` share links) exist, but neither is imported by `App.tsx` or any other component.
-- `exchangeRate` is read from localStorage on load but there is no `useEffect` that writes it back, so changes made in the calculator tab are not persisted across reloads.
 - Commit history consists of direct edits via the GitHub web UI ("Update App.tsx"), so there is no meaningful history to infer conventions from.

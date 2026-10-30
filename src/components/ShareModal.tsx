@@ -10,8 +10,19 @@ import {
   Sparkles,
   ExternalLink,
   RotateCcw,
+  LogOut,
+  AlertTriangle,
 } from 'lucide-react';
 import { ScheduleItem } from '../types';
+import { SyncStatus } from '../hooks/useRoomSync';
+
+const STATUS_TEXT: Record<SyncStatus, string> = {
+  off: '개인 편집 모드',
+  connecting: '연결 중…',
+  live: '실시간 연동 중',
+  offline: '오프라인 · 연결되면 자동 동기화',
+  error: '동기화 오류',
+};
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -19,8 +30,10 @@ interface ShareModalProps {
   roomId: string;
   allItinerary: ScheduleItem[];
   exchangeRate: number;
-  isOnline?: boolean;
+  syncStatus: SyncStatus;
+  syncError?: string | null;
   onCreateNewRoom: () => void;
+  onLeaveRoom: () => void;
   onShowToast: (msg: string) => void;
 }
 
@@ -30,8 +43,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   roomId,
   allItinerary,
   exchangeRate,
-  isOnline = true,
+  syncStatus,
+  syncError,
   onCreateNewRoom,
+  onLeaveRoom,
   onShowToast,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
@@ -100,6 +115,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     return text;
   };
 
+  if (!isOpen) return null;
+
   const itineraryText = generateItineraryText();
 
   // Copy Option 1: Live Real-time Link
@@ -153,13 +170,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               <div className="flex items-center gap-1.5 text-xs text-slate-400">
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    roomId && isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                    syncStatus === 'live'
+                      ? 'bg-emerald-400 animate-pulse'
+                      : syncStatus === 'offline'
+                      ? 'bg-orange-400'
+                      : syncStatus === 'error'
+                      ? 'bg-red-500'
+                      : 'bg-slate-500'
                   }`}
                 />
                 <span className="font-mono text-emerald-300 font-bold">
                   {roomId ? `방: ${roomId}` : '개인 편집 모드'}
                 </span>
-                <span>· Firebase Firestore</span>
+                {roomId && <span>· {STATUS_TEXT[syncStatus]}</span>}
               </div>
             </div>
           </div>
@@ -171,6 +194,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {syncError && (
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-red-950/60 border border-red-800 text-xs text-red-200">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+            <span>{syncError}</span>
+          </div>
+        )}
 
         {/* OPTION 1: Real-time Live Link or Create Room prompt */}
         {!roomId ? (
@@ -257,6 +287,18 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 <span>새 방 만들기</span>
               </button>
             </div>
+
+            <button
+              onClick={() => {
+                if (window.confirm('공유 방에서 나가시겠습니까? 현재 데이터는 이 기기에 그대로 남습니다.')) {
+                  onLeaveRoom();
+                }
+              }}
+              className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-red-300 border border-slate-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>방 나가기 (개인 모드로 전환)</span>
+            </button>
           </div>
         )}
 
@@ -317,11 +359,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             <span>💡 실시간 동기화 안내</span>
           </p>
           <p>
-            • 나와 친구가 같은 <span className="text-amber-400 font-mono">?room={roomId}</span> URL로
-            접속하면 일정을 추가, 수정, 삭제할 때마다 두 화면이 자동으로 즉시 업데이트됩니다.
+            • 같은 공유 링크로 접속한 사람끼리 일정·경비·동행자·환율·맛집·위시리스트가 자동으로
+            동기화됩니다. 로그인은 필요 없습니다.
           </p>
           <p>
-            • 오프라인 상태일 때는 기기에 임시 보관되며, 인터넷이 연결되면 자동으로 다시 동기화됩니다.
+            • 준비물 체크리스트, 중국어 회화, 첨부 사진(바우처·QR)은 각자 기기에만 저장됩니다.
+          </p>
+          <p>
+            • 중국 현지 유심·와이파이에서는 연결이 안 될 수 있습니다(한국 로밍은 대부분 가능). 오프라인
+            중 수정한 내용은 기기에 보관되었다가 연결되면 자동으로 전송됩니다.
           </p>
         </div>
       </div>
