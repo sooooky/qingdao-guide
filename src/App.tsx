@@ -131,7 +131,7 @@ export default function App() {
     }
   });
 
-  // Room ID from URL query (?room=...) or hash, or generate new
+  // Room ID from URL query (?room=...) or hash. Defaults to empty string if not present
   const [roomId, setRoomId] = useState<string>(() => {
     try {
       // 1. Check window.location.search (?room=...)
@@ -154,21 +154,14 @@ export default function App() {
       console.error('Error reading room ID from URL:', e);
     }
 
-    const newId = generateRandomRoomId();
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.set('room', newId);
-      window.history.replaceState(null, '', url.toString());
-    } catch (e) {
-      console.error('Error setting initial room URL:', e);
-    }
-    return newId;
+    // Default to empty (local mode) - DO NOT force redirect on startup
+    return '';
   });
 
   // Modals & Navigation state
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
-  const [isLiveConnected, setIsLiveConnected] = useState(true);
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
   const [isBackupOpen, setIsBackupOpen] = useState(false);
   const [isVaultOpen, setIsVaultOpen] = useState(false);
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
@@ -258,8 +251,9 @@ export default function App() {
   const isRemoteUpdateRef = useRef(false);
   const hasInitializedRoomRef = useRef(false);
 
-  // Keep URL ?room= parameter in sync with roomId
+  // Keep URL ?room= parameter in sync ONLY if roomId is active
   useEffect(() => {
+    if (!roomId) return;
     try {
       const url = new URL(window.location.href);
       if (url.searchParams.get('room') !== roomId) {
@@ -271,9 +265,9 @@ export default function App() {
     }
   }, [roomId]);
 
-  // Multi-tab BroadcastChannel fallback sync
+  // Multi-tab BroadcastChannel fallback sync (only if roomId is present)
   useEffect(() => {
-    if (typeof BroadcastChannel === 'undefined') return;
+    if (!roomId || typeof BroadcastChannel === 'undefined') return;
     const channelName = `qd_room_channel_${roomId}`;
     const channel = new BroadcastChannel(channelName);
 
@@ -301,71 +295,86 @@ export default function App() {
     };
   }, [roomId]);
 
-  // Firestore Real-time Collaboration: Subscribe to room updates via onSnapshot
+  // Firestore Real-time Collaboration: Subscribe ONLY if roomId exists
   useEffect(() => {
+    if (!roomId) {
+      setIsLiveConnected(false);
+      return;
+    }
+
     setIsLiveConnected(true);
     hasInitializedRoomRef.current = false;
 
-    const unsubscribe = subscribeToRoom(
-      roomId,
-      (roomData: RoomData) => {
-        setIsLiveConnected(true);
-        // If the document has data in Firestore
-        if (
-          roomData.allItinerary ||
-          roomData.expenses ||
-          roomData.checklist ||
-          roomData.foodPlaces ||
-          roomData.wishlist
-        ) {
-          isRemoteUpdateRef.current = true;
-          if (roomData.allItinerary) setAllItinerary(roomData.allItinerary);
-          if (roomData.backupPool) setBackupPool(roomData.backupPool);
-          if (roomData.expenses) setExpenses(roomData.expenses);
-          if (roomData.checklist) setChecklist(roomData.checklist);
-          if (roomData.foodPlaces) setFoodPlaces(roomData.foodPlaces);
-          if (roomData.wishlist) setWishlist(roomData.wishlist);
-          if (roomData.phrases) setPhrases(roomData.phrases);
-          if (roomData.exchangeRate) setExchangeRate(roomData.exchangeRate);
-          hasInitializedRoomRef.current = true;
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = subscribeToRoom(
+        roomId,
+        (roomData: RoomData) => {
+          try {
+            setIsLiveConnected(true);
+            // If the document has data in Firestore
+            if (
+              roomData.allItinerary ||
+              roomData.expenses ||
+              roomData.checklist ||
+              roomData.foodPlaces ||
+              roomData.wishlist
+            ) {
+              isRemoteUpdateRef.current = true;
+              if (roomData.allItinerary) setAllItinerary(roomData.allItinerary);
+              if (roomData.backupPool) setBackupPool(roomData.backupPool);
+              if (roomData.expenses) setExpenses(roomData.expenses);
+              if (roomData.checklist) setChecklist(roomData.checklist);
+              if (roomData.foodPlaces) setFoodPlaces(roomData.foodPlaces);
+              if (roomData.wishlist) setWishlist(roomData.wishlist);
+              if (roomData.phrases) setPhrases(roomData.phrases);
+              if (roomData.exchangeRate) setExchangeRate(roomData.exchangeRate);
+              hasInitializedRoomRef.current = true;
 
-          // Release the remote update lock shortly after state dispatch
-          setTimeout(() => {
-            isRemoteUpdateRef.current = false;
-          }, 150);
-        } else if (!hasInitializedRoomRef.current) {
-          // If room doesn't exist yet in Firestore, initialize it with current data
-          hasInitializedRoomRef.current = true;
-          saveRoomData(
-            roomId,
-            {
-              allItinerary,
-              backupPool,
-              expenses,
-              checklist,
-              foodPlaces,
-              wishlist,
-              phrases,
-              exchangeRate,
-            },
-            clientIdRef.current
-          ).catch((e) => console.warn('Room initial upload error:', e));
+              // Release the remote update lock shortly after state dispatch
+              setTimeout(() => {
+                isRemoteUpdateRef.current = false;
+              }, 150);
+            } else if (!hasInitializedRoomRef.current) {
+              // If room doesn't exist yet in Firestore, initialize it with current data
+              hasInitializedRoomRef.current = true;
+              saveRoomData(
+                roomId,
+                {
+                  allItinerary,
+                  backupPool,
+                  expenses,
+                  checklist,
+                  foodPlaces,
+                  wishlist,
+                  phrases,
+                  exchangeRate,
+                },
+                clientIdRef.current
+              ).catch((e) => console.warn('Room initial upload error:', e));
+            }
+          } catch (e) {
+            console.warn('Error processing remote room update:', e);
+          }
+        },
+        (err) => {
+          console.warn('Real-time connection issue:', err);
+          setIsLiveConnected(false);
         }
-      },
-      (err) => {
-        console.warn('Real-time connection issue:', err);
-        setIsLiveConnected(false);
-      }
-    );
+      );
+    } catch (e) {
+      console.warn('Failed to subscribe to room:', e);
+      setIsLiveConnected(false);
+    }
 
     return () => {
       unsubscribe();
     };
   }, [roomId]);
 
-  // Outgoing sync: Debounce write changes to Firestore room doc and BroadcastChannel
+  // Outgoing sync: Debounce write changes to Firestore room doc and BroadcastChannel (only when roomId exists)
   useEffect(() => {
-    if (isRemoteUpdateRef.current) {
+    if (!roomId || isRemoteUpdateRef.current) {
       return;
     }
 
@@ -413,17 +422,18 @@ export default function App() {
     roomId,
   ]);
 
-  // Create a brand new collaboration room
+  // Create a brand new collaboration room explicitly on user action
   const handleCreateNewRoom = () => {
     const newId = generateRandomRoomId();
     setRoomId(newId);
     try {
-      const newUrl = `${window.location.pathname}?room=${newId}`;
-      window.history.replaceState(null, '', newUrl);
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', newId);
+      window.history.replaceState(null, '', url.toString());
     } catch (e) {
       console.error(e);
     }
-    showToast(`새로운 협업 방 (${newId})이 생성되었습니다!`);
+    showToast(`새로운 실시간 공유 방 (${newId})이 생성되었습니다!`);
   };
 
   // Reset to original data

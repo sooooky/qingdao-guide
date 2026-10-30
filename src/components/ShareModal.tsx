@@ -39,6 +39,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   // Generate full shareable URL preserving base path and search parameters
   const getShareUrl = () => {
+    if (!roomId) return window.location.href.split('?')[0].split('#')[0];
     try {
       const url = new URL(window.location.href);
       url.searchParams.set('room', roomId);
@@ -61,7 +62,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     };
 
     let text = `✈️ [칭다오 2박 3일 스마트 여행 일정표]\n`;
-    text += `실시간 공동 편집 방: ${roomId}\n`;
+    if (roomId) {
+      text += `실시간 공동 편집 방: ${roomId}\n`;
+    }
     text += `기준 환율: 1元 ≈ ${exchangeRate}원\n`;
     text += `────────────────────\n\n`;
 
@@ -74,7 +77,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       if (dayItems.length === 0) {
         text += `  (등록된 일정이 없습니다)\n`;
       } else {
-        dayItems.forEach((item, idx) => {
+        dayItems.forEach((item) => {
           const checkMark = item.completed ? '✅' : '•';
           text += `  ${checkMark} [${item.startTime}] ${item.title} (${item.titleCn})\n`;
           if (item.desc) {
@@ -89,8 +92,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     });
 
     text += `────────────────────\n`;
-    text += `🔗 실시간 공동 편집 링크:\n${shareUrl}\n`;
-    text += `(위 링크로 들어오면 친구와 함께 일정을 추가/수정/체크할 수 있습니다)`;
+    if (roomId) {
+      text += `🔗 실시간 공동 편집 링크:\n${shareUrl}\n`;
+      text += `(위 링크로 들어오면 친구와 함께 일정을 추가/수정/체크할 수 있습니다)`;
+    }
 
     return text;
   };
@@ -99,6 +104,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   // Copy Option 1: Live Real-time Link
   const handleCopyLink = async () => {
+    if (!roomId) {
+      onShowToast('먼저 실시간 공유 방을 생성해주세요.');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopiedLink(true);
@@ -142,9 +151,15 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 <Sparkles className="w-4 h-4 text-amber-400" />
               </h2>
               <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="font-mono text-emerald-300 font-bold">방: {roomId}</span>
-                <span>· Firebase Firestore 실시간 연동</span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    roomId && isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+                  }`}
+                />
+                <span className="font-mono text-emerald-300 font-bold">
+                  {roomId ? `방: ${roomId}` : '개인 편집 모드'}
+                </span>
+                <span>· Firebase Firestore</span>
               </div>
             </div>
           </div>
@@ -157,70 +172,93 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </button>
         </div>
 
-        {/* OPTION 1: Real-time Live Link */}
-        <div className="bg-slate-950/90 border border-emerald-500/40 rounded-2xl p-4 space-y-3 shadow-lg">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-xs flex items-center justify-center border border-emerald-500/40">
-                1
-              </span>
-              <h3 className="font-extrabold text-sm text-emerald-400 flex items-center gap-1.5">
-                <Users className="w-4 h-4" />
-                <span>실시간 공동 편집 링크 복사</span>
-              </h3>
+        {/* OPTION 1: Real-time Live Link or Create Room prompt */}
+        {!roomId ? (
+          <div className="bg-slate-950/90 border border-emerald-500/40 rounded-2xl p-5 space-y-4 text-center shadow-lg">
+            <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-full w-12 h-12 mx-auto flex items-center justify-center border border-emerald-500/30">
+              <Users className="w-6 h-6" />
             </div>
-            <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-800">
-              실시간 자동 동기화
-            </span>
-          </div>
-
-          <p className="text-xs text-slate-300 leading-relaxed">
-            이 링크를 동행인에게 보내면 같은 화면을 보며 실시간으로 일정을 추가, 수정,
-            완료 체크할 수 있습니다.
-          </p>
-
-          {/* URL Box */}
-          <div className="flex items-center bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 gap-2 text-xs font-mono text-cyan-300 select-all overflow-x-auto">
-            <Link className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="truncate">{shareUrl}</span>
-          </div>
-
-          <div className="flex gap-2 pt-1">
+            <div>
+              <h3 className="font-extrabold text-base text-slate-100">
+                실시간 공동 편집 방 생성하기
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                '공유 방 만들기'를 누르면 고유한 링크가 생성되며, 친구들과 동일한 일정을 실시간으로 함께 수정할 수 있습니다.
+              </p>
+            </div>
             <button
-              onClick={handleCopyLink}
-              className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition active:scale-95 ${
-                copiedLink
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-              }`}
+              onClick={onCreateNewRoom}
+              className="w-full py-3 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition active:scale-95 flex items-center justify-center gap-2"
             >
-              {copiedLink ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>링크 복사 완료!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  <span>① 실시간 공유 링크 복사</span>
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                if (window.confirm('현재 방을 떠나 새로운 협업 방을 만드시겠습니까?')) {
-                  onCreateNewRoom();
-                }
-              }}
-              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0"
-              title="새로운 방 생성"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>새 방 만들기</span>
+              <Sparkles className="w-4 h-4 text-slate-950" />
+              <span>✨ 실시간 공유 방 만들기</span>
             </button>
           </div>
-        </div>
+        ) : (
+          <div className="bg-slate-950/90 border border-emerald-500/40 rounded-2xl p-4 space-y-3 shadow-lg">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-xs flex items-center justify-center border border-emerald-500/40">
+                  1
+                </span>
+                <h3 className="font-extrabold text-sm text-emerald-400 flex items-center gap-1.5">
+                  <Users className="w-4 h-4" />
+                  <span>실시간 공동 편집 링크 복사</span>
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-800">
+                실시간 자동 동기화
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              이 링크를 동행인에게 보내면 같은 화면을 보며 실시간으로 일정을 추가, 수정,
+              완료 체크할 수 있습니다.
+            </p>
+
+            {/* URL Box */}
+            <div className="flex items-center bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 gap-2 text-xs font-mono text-cyan-300 select-all overflow-x-auto">
+              <Link className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="truncate">{shareUrl}</span>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleCopyLink}
+                className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition active:scale-95 ${
+                  copiedLink
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                }`}
+              >
+                {copiedLink ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>링크 복사 완료!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>① 실시간 공유 링크 복사</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => {
+                  if (window.confirm('현재 방을 떠나 새로운 협업 방을 만드시겠습니까?')) {
+                    onCreateNewRoom();
+                  }
+                }}
+                className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0"
+                title="새로운 방 생성"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>새 방 만들기</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* OPTION 2: Itinerary Text Copy */}
         <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-lg">
