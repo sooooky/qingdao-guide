@@ -13,6 +13,7 @@ import {
   Download,
   Camera,
   ChevronRight,
+  Share2,
 } from 'lucide-react';
 
 export type TabKey =
@@ -34,6 +35,8 @@ interface NavigationProps {
   vaultCount?: number;
   onOpenVault?: () => void;
   onOpenBackup?: () => void;
+  onOpenShare?: () => void;
+  roomId?: string;
 }
 
 export const TABS: {
@@ -112,6 +115,8 @@ export const Navigation: React.FC<NavigationProps> = ({
   vaultCount = 0,
   onOpenVault,
   onOpenBackup,
+  onOpenShare,
+  roomId,
 }) => {
   return (
     <>
@@ -231,6 +236,22 @@ export const Navigation: React.FC<NavigationProps> = ({
 
         {/* Drawer Footer Utilities */}
         <div className="p-3 border-t border-slate-800 bg-slate-950/60 space-y-2">
+          {onOpenShare && (
+            <button
+              onClick={() => {
+                onOpenShare();
+                onClose();
+              }}
+              className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 hover:from-emerald-500/30 hover:to-teal-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="font-extrabold">실시간 공동 편집 & 링크 공유</span>
+              </div>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            </button>
+          )}
+
           {onOpenVault && (
             <button
               onClick={() => {

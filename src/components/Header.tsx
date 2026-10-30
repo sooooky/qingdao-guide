@@ -1,25 +1,31 @@
 import React from 'react';
-import { Download, RefreshCw, Menu } from 'lucide-react';
+import { Download, RefreshCw, Menu, Share2 } from 'lucide-react';
 import { TabKey, TABS } from './Navigation';
 
 interface HeaderProps {
   onOpenNav: () => void;
   currentTab: TabKey;
+  onOpenShare: () => void;
   onOpenBackup: () => void;
   onOpenVault: () => void;
   vaultCount: number;
   onReset: () => void;
   exchangeRate: number;
+  isLiveConnected?: boolean;
+  roomId?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenNav,
   currentTab,
+  onOpenShare,
   onOpenBackup,
   onOpenVault,
   vaultCount,
   onReset,
   exchangeRate,
+  isLiveConnected = true,
+  roomId,
 }) => {
   const currentTabInfo = TABS.find((t) => t.key === currentTab);
   const CurrentIcon = currentTabInfo?.icon;
@@ -60,6 +66,22 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Action Controls */}
         <div className="flex items-center space-x-1.5 shrink-0">
+          {/* Real-time Share & Live Collab Button */}
+          <button
+            onClick={onOpenShare}
+            className="px-2.5 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+            title="실시간 링크 공유 & 일정 텍스트 복사"
+          >
+            <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-[11px] whitespace-nowrap font-extrabold">공유하기</span>
+            {isLiveConnected && (
+              <span
+                className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
+                title={`실시간 연동 중 (방: ${roomId || ''})`}
+              />
+            )}
+          </button>
+
           {/* Offline Screenshots Vault Button */}
           <button
             onClick={onOpenVault}
@@ -77,11 +99,11 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={onOpenBackup}
-            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-cyan-400 border border-cyan-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1"
+            className="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-cyan-400 border border-cyan-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1"
             title="데이터 백업 및 복원"
           >
             <Download className="w-3.5 h-3.5" />
-            <span className="text-[11px] whitespace-nowrap hidden md:inline">백업/공유</span>
+            <span className="text-[11px] whitespace-nowrap hidden md:inline">백업</span>
           </button>
 
           <button

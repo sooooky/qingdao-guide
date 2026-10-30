@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Menu } from 'lucide-react';
 import { Header } from './components/Header';
 import { Navigation, TabKey } from './components/Navigation';
@@ -15,6 +15,13 @@ import { BackupModal } from './components/BackupModal';
 import { AddItemModal } from './components/AddItemModal';
 import { AttachmentViewerModal } from './components/AttachmentViewerModal';
 import { OfflineVaultModal } from './components/OfflineVaultModal';
+import { ShareModal } from './components/ShareModal';
+import {
+  generateRandomRoomId,
+  subscribeToRoom,
+  saveRoomData,
+  RoomData,
+} from './utils/firebase';
 
 import {
   ScheduleItem,
@@ -124,8 +131,31 @@ export default function App() {
     }
   });
 
+  // Room ID from URL query (?room=...) or generate new
+  const [roomId, setRoomId] = useState<string>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const r = params.get('room');
+      if (r && r.trim()) {
+        return r.trim();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    const newId = generateRandomRoomId();
+    try {
+      const newUrl = `${window.location.pathname}?room=${newId}`;
+      window.history.replaceState(null, '', newUrl);
+    } catch (e) {
+      console.error(e);
+    }
+    return newId;
+  });
+
   // Modals & Navigation state
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isLiveConnected, setIsLiveConnected] = useState(true);
   const [isBackupOpen, setIsBackupOpen] = useState(false);
   const [isVaultOpen, setIsVaultOpen] = useState(false);
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
@@ -209,6 +239,137 @@ export default function App() {
       console.error(e);
     }
   }, [phrases]);
+
+  // Client unique ID and sync control refs
+  const clientIdRef = useRef('user_' + Math.random().toString(36).substring(2, 9));
+  const isRemoteUpdateRef = useRef(false);
+  const hasInitializedRoomRef = useRef(false);
+
+  // Keep URL ?room= parameter in sync with roomId
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('room') !== roomId) {
+        const newUrl = `${window.location.pathname}?room=${roomId}`;
+        window.history.replaceState(null, '', newUrl);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [roomId]);
+
+  // Firestore Real-time Collaboration: Subscribe to room updates via onSnapshot
+  useEffect(() => {
+    setIsLiveConnected(true);
+    hasInitializedRoomRef.current = false;
+
+    const unsubscribe = subscribeToRoom(
+      roomId,
+      (roomData: RoomData) => {
+        setIsLiveConnected(true);
+        // If the document has data in Firestore
+        if (
+          roomData.allItinerary ||
+          roomData.expenses ||
+          roomData.checklist ||
+          roomData.foodPlaces ||
+          roomData.wishlist
+        ) {
+          isRemoteUpdateRef.current = true;
+          if (roomData.allItinerary) setAllItinerary(roomData.allItinerary);
+          if (roomData.backupPool) setBackupPool(roomData.backupPool);
+          if (roomData.expenses) setExpenses(roomData.expenses);
+          if (roomData.checklist) setChecklist(roomData.checklist);
+          if (roomData.foodPlaces) setFoodPlaces(roomData.foodPlaces);
+          if (roomData.wishlist) setWishlist(roomData.wishlist);
+          if (roomData.phrases) setPhrases(roomData.phrases);
+          if (roomData.exchangeRate) setExchangeRate(roomData.exchangeRate);
+          hasInitializedRoomRef.current = true;
+
+          // Release the remote update lock shortly after state dispatch
+          setTimeout(() => {
+            isRemoteUpdateRef.current = false;
+          }, 150);
+        } else if (!hasInitializedRoomRef.current) {
+          // If room doesn't exist yet in Firestore, initialize it with current data
+          hasInitializedRoomRef.current = true;
+          saveRoomData(
+            roomId,
+            {
+              allItinerary,
+              backupPool,
+              expenses,
+              checklist,
+              foodPlaces,
+              wishlist,
+              phrases,
+              exchangeRate,
+            },
+            clientIdRef.current
+          ).catch((e) => console.warn('Room initial upload error:', e));
+        }
+      },
+      (err) => {
+        console.warn('Real-time connection issue:', err);
+        setIsLiveConnected(false);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [roomId]);
+
+  // Outgoing sync: Debounce write changes to Firestore room doc
+  useEffect(() => {
+    if (isRemoteUpdateRef.current) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      saveRoomData(
+        roomId,
+        {
+          allItinerary,
+          backupPool,
+          expenses,
+          checklist,
+          foodPlaces,
+          wishlist,
+          phrases,
+          exchangeRate,
+        },
+        clientIdRef.current
+      ).catch((err) => {
+        console.warn('Real-time sync to Firestore failed:', err);
+      });
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [
+    allItinerary,
+    backupPool,
+    expenses,
+    checklist,
+    foodPlaces,
+    wishlist,
+    phrases,
+    exchangeRate,
+    roomId,
+  ]);
+
+  // Create a brand new collaboration room
+  const handleCreateNewRoom = () => {
+    const newId = generateRandomRoomId();
+    setRoomId(newId);
+    try {
+      const newUrl = `${window.location.pathname}?room=${newId}`;
+      window.history.replaceState(null, '', newUrl);
+    } catch (e) {
+      console.error(e);
+    }
+    showToast(`새로운 협업 방 (${newId})이 생성되었습니다!`);
+  };
 
   // Reset to original data
   const handleResetData = () => {
@@ -348,11 +509,14 @@ export default function App() {
       <Header
         onOpenNav={() => setIsNavOpen(true)}
         currentTab={activeTab}
+        onOpenShare={() => setIsShareOpen(true)}
         onOpenBackup={() => setIsBackupOpen(true)}
         onOpenVault={() => setIsVaultOpen(true)}
         vaultCount={totalVaultCount}
         onReset={handleResetData}
         exchangeRate={exchangeRate}
+        isLiveConnected={isLiveConnected}
+        roomId={roomId}
       />
 
       {/* Main Content Viewport */}
@@ -448,6 +612,8 @@ export default function App() {
         vaultCount={totalVaultCount}
         onOpenVault={() => setIsVaultOpen(true)}
         onOpenBackup={() => setIsBackupOpen(true)}
+        onOpenShare={() => setIsShareOpen(true)}
+        roomId={roomId}
       />
 
       {/* Floating Left Menu trigger button for easy thumb reach on mobile */}
@@ -504,6 +670,18 @@ export default function App() {
           exchangeRate,
         }}
         onImport={handleImportBackup}
+        onShowToast={showToast}
+      />
+
+      {/* Real-time Collaboration & Share Modal */}
+      <ShareModal
+        isOpen={isShareOpen}
+        onClose={() => setIsShareOpen(false)}
+        roomId={roomId}
+        allItinerary={allItinerary}
+        exchangeRate={exchangeRate}
+        isOnline={isLiveConnected}
+        onCreateNewRoom={handleCreateNewRoom}
         onShowToast={showToast}
       />
 
