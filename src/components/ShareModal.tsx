@@ -37,10 +37,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
 
-  if (!isOpen) return null;
+  // Generate full shareable URL preserving base path and search parameters
+  const getShareUrl = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', roomId);
+      return url.toString();
+    } catch {
+      const cleanBase = window.location.href.split('?')[0].split('#')[0];
+      return `${cleanBase}?room=${roomId}`;
+    }
+  };
 
-  // Generate full shareable URL
-  const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+  const shareUrl = getShareUrl();
 
   // Generate clean text summary of 3-day itinerary
   const generateItineraryText = (): string => {

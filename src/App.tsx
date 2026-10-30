@@ -131,23 +131,36 @@ export default function App() {
     }
   });
 
-  // Room ID from URL query (?room=...) or generate new
+  // Room ID from URL query (?room=...) or hash, or generate new
   const [roomId, setRoomId] = useState<string>(() => {
     try {
+      // 1. Check window.location.search (?room=...)
       const params = new URLSearchParams(window.location.search);
       const r = params.get('room');
       if (r && r.trim()) {
         return r.trim();
       }
+
+      // 2. Check window.location.hash (e.g. #/?room=... or #room=...)
+      if (window.location.hash) {
+        const qIdx = window.location.hash.indexOf('?');
+        if (qIdx !== -1) {
+          const hashParams = new URLSearchParams(window.location.hash.slice(qIdx));
+          const rHash = hashParams.get('room');
+          if (rHash && rHash.trim()) return rHash.trim();
+        }
+      }
     } catch (e) {
-      console.error(e);
+      console.error('Error reading room ID from URL:', e);
     }
+
     const newId = generateRandomRoomId();
     try {
-      const newUrl = `${window.location.pathname}?room=${newId}`;
-      window.history.replaceState(null, '', newUrl);
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', newId);
+      window.history.replaceState(null, '', url.toString());
     } catch (e) {
-      console.error(e);
+      console.error('Error setting initial room URL:', e);
     }
     return newId;
   });
@@ -248,14 +261,44 @@ export default function App() {
   // Keep URL ?room= parameter in sync with roomId
   useEffect(() => {
     try {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('room') !== roomId) {
-        const newUrl = `${window.location.pathname}?room=${roomId}`;
-        window.history.replaceState(null, '', newUrl);
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('room') !== roomId) {
+        url.searchParams.set('room', roomId);
+        window.history.replaceState(null, '', url.toString());
       }
     } catch (e) {
-      console.error(e);
+      console.error('URL sync error:', e);
     }
+  }, [roomId]);
+
+  // Multi-tab BroadcastChannel fallback sync
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const channelName = `qd_room_channel_${roomId}`;
+    const channel = new BroadcastChannel(channelName);
+
+    channel.onmessage = (event) => {
+      if (event.data && event.data.clientId !== clientIdRef.current) {
+        const data: RoomData = event.data.roomData;
+        isRemoteUpdateRef.current = true;
+        if (data.allItinerary) setAllItinerary(data.allItinerary);
+        if (data.backupPool) setBackupPool(data.backupPool);
+        if (data.expenses) setExpenses(data.expenses);
+        if (data.checklist) setChecklist(data.checklist);
+        if (data.foodPlaces) setFoodPlaces(data.foodPlaces);
+        if (data.wishlist) setWishlist(data.wishlist);
+        if (data.phrases) setPhrases(data.phrases);
+        if (data.exchangeRate) setExchangeRate(data.exchangeRate);
+
+        setTimeout(() => {
+          isRemoteUpdateRef.current = false;
+        }, 150);
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
   }, [roomId]);
 
   // Firestore Real-time Collaboration: Subscribe to room updates via onSnapshot
@@ -320,30 +363,42 @@ export default function App() {
     };
   }, [roomId]);
 
-  // Outgoing sync: Debounce write changes to Firestore room doc
+  // Outgoing sync: Debounce write changes to Firestore room doc and BroadcastChannel
   useEffect(() => {
     if (isRemoteUpdateRef.current) {
       return;
     }
 
     const timer = setTimeout(() => {
-      saveRoomData(
-        roomId,
-        {
-          allItinerary,
-          backupPool,
-          expenses,
-          checklist,
-          foodPlaces,
-          wishlist,
-          phrases,
-          exchangeRate,
-        },
-        clientIdRef.current
-      ).catch((err) => {
+      const roomPayload: RoomData = {
+        allItinerary,
+        backupPool,
+        expenses,
+        checklist,
+        foodPlaces,
+        wishlist,
+        phrases,
+        exchangeRate,
+      };
+
+      // Broadcast to other local tabs
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          const channel = new BroadcastChannel(`qd_room_channel_${roomId}`);
+          channel.postMessage({
+            clientId: clientIdRef.current,
+            roomData: roomPayload,
+          });
+          channel.close();
+        } catch (e) {
+          console.warn('BroadcastChannel error:', e);
+        }
+      }
+
+      saveRoomData(roomId, roomPayload, clientIdRef.current).catch((err) => {
         console.warn('Real-time sync to Firestore failed:', err);
       });
-    }, 450);
+    }, 400);
 
     return () => clearTimeout(timer);
   }, [

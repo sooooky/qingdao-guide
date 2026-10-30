@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
   ScheduleItem,
   ExpenseItem,
@@ -21,6 +22,21 @@ export const firebaseConfig = {
 // Initialize or reuse Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+
+// Authenticate anonymously so Firestore security rules requiring auth will succeed
+let authPromise: Promise<any> | null = null;
+export async function ensureAuth() {
+  if (!authPromise) {
+    authPromise = signInAnonymously(auth).catch((err) => {
+      console.warn('Firebase anonymous auth warning:', err);
+    });
+  }
+  return authPromise;
+}
+
+// Ensure auth on load
+ensureAuth();
 
 export interface RoomData {
   allItinerary?: ScheduleItem[];
@@ -35,19 +51,14 @@ export interface RoomData {
   lastUpdatedBy?: string;
 }
 
-// Generate random friendly room ID like "qd-7k9x2m"
+// Generate random friendly room ID using Math.random().toString(36).substring(2, 9)
 export function generateRandomRoomId(): string {
-  const chars = '23456789abcdefghjkmnpqrstuvwxyz';
-  let result = 'qd-';
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  return Math.random().toString(36).substring(2, 9);
 }
 
-// Get room reference
+// Get room reference from 'rooms' collection
 export function getRoomDocRef(roomId: string) {
-  return doc(db, 'travel_rooms', roomId);
+  return doc(db, 'rooms', roomId);
 }
 
 // Subscribe to room updates with onSnapshot
@@ -56,6 +67,7 @@ export function subscribeToRoom(
   onData: (data: RoomData) => void,
   onError?: (err: any) => void
 ) {
+  ensureAuth();
   const roomRef = getRoomDocRef(roomId);
   return onSnapshot(
     roomRef,
@@ -74,6 +86,7 @@ export function subscribeToRoom(
 // Save room data to Firestore
 export async function saveRoomData(roomId: string, data: Partial<RoomData>, clientId: string) {
   try {
+    await ensureAuth();
     const roomRef = getRoomDocRef(roomId);
     await setDoc(
       roomRef,
@@ -85,7 +98,9 @@ export async function saveRoomData(roomId: string, data: Partial<RoomData>, clie
       { merge: true }
     );
   } catch (err) {
-    console.error('Failed to sync data to Firestore:', err);
+    console.warn('Failed to sync data to Firestore:', err);
     throw err;
   }
 }
+
+
