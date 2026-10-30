@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>칭다오 2박 3일 스마트 여행 플래너 & 서바이벌 유틸리티</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Leaflet CSS & JS (Free Map Library) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;900&display=swap');
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      touch-action: manipulation;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* Leaflet Custom Marker & Popup Style */
+    .custom-map-marker {
+      background: #f59e0b;
+      color: #0f172a;
+      font-weight: 900;
+      font-size: 13px;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #ffffff;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+    .leaflet-popup-content-wrapper {
+      background: #0f172a;
+      color: #f8fafc;
+      border-radius: 1rem;
+      border: 1px solid #334155;
+    }
+    .leaflet-popup-tip {
+      background: #0f172a;
+    }
+    /* 지도 타일 이미지 차단 방지 및 크기 보정 */
+    .leaflet-tile-container img {
+      width: 256px !important;
+      height: 256px !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen pb-24 select-none">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex items-center justify-between shadow-md">
+    <div class="flex items-center space-x-2">
+      <div class="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+        <i data-lucide="beer" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="font-black text-sm text-slate-100 tracking-tight flex items-center gap-1">
+          칭다오 스마트 <span class="text-amber-400">플래너</span>
+        </h1>
+        <p class="text-[10px] text-slate-400 font-medium">2박 3일 지도 & 서바이벌 툴킷</p>
+      </div>
+    </div>
+    
+    <div class="flex items-center space-x-1">
+      <button onclick="openBackupModal()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span class="text-[11px]">백업/공유</span>
+      </button>
+      <button onclick="resetData()" class="p-2 text-slate-400 hover:text-red-400 transition" title="초기화">
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="p-4 max-w-md mx-auto space-y-4">
+
+    <!-- Active Tab Content Area -->
+    <div id="tab-content"></div>
+
+  </main>
+
+  <!-- Sticky Bottom Navigation Bar -->
+  <nav class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 px-2 py-2">
+    <div class="max-w-md mx-auto flex items-center justify-around">
+      <button onclick="switchTab('itinerary')" id="nav-itinerary" class="flex flex-col items-center py-1 px-2 rounded-xl text-amber-400 font-bold">
+        <i data-lucide="calendar" class="w-5 h-5"></i>
+        <span class="text-[10px] mt-1">스케줄러</span>
+      </button>
+
+      <button onclick="switchTab('map')" id="nav-map" class="flex flex-col items-center py-1 px-2 rounded-xl text-slate-400">
+        <i data-lucide="map" class="w-5 h-5"></i>
+        <span class="text-[10px] mt-1">스마트지도</span>
+      </button>
+
+      <button onclick="switchTab('calc')" id="nav-calc" class="flex flex-col items-center py-1 px-2 rounded-xl text-slate-400">
+        <i data-lucide="calculator" class="w-5 h-5"></i>
+        <span class="text-[10px] mt-1">환율 & N빵</span>
+      </button>
+
+      <button onclick="switchTab('survival')" id="nav-survival" class="flex flex-col items-center py-1 px-2 rounded-xl text-slate-400">
+        <i data-lucide="car" class="w-5 h-5"></i>
+        <span class="text-[10px] mt-1">이동</span>
+      </button>
+
+      <button onclick="switchTab('food')" id="nav-food" class="flex flex-col items-center py-1 px-2 rounded-xl text-slate-400">
+        <i data-lucide="beer" class="w-5 h-5"></i>
+        <span class="text-[10px] mt-1">먹거리</span>
+      </button>
+
+      <button onclick="switchTab('checklist')" id="nav-checklist" class="flex flex-col items-center py-1 px-2 rounded-xl text-slate-400">
+        <i data-lucide="check-square" class="w-5 h-5"></i>
+        <span class="text-[10px] mt-1">체크리스트</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Modal Container Overlay -->
+  <div id="modal-overlay" class="hidden fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4">
+    <div id="modal-body" class="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl relative"></div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="hidden fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-slate-950 px-4 py-2 rounded-full font-bold text-xs shadow-lg flex items-center space-x-1.5 animate-bounce">
+    <i data-lucide="sparkles" class="w-4 h-4"></i>
+    <span id="toast-msg">메시지</span>
+  </div>
+
+  <!-- Application Logic Script -->
+  <script>
+    // Initial Data Pre-sets
+    const TAXI_CARDS = [
+      { title: '칭다오 자오둥 국제공항', cn: '请带我去 青岛胶东国际机场', pinyin: 'Qīngdǎo Jiāodōng Guójì Jīchǎng', kr: '칭다오 자오둥 국제공항으로 가주세요.', tag: '공항' },
+      { title: '칭다오 맥주 박물관', cn: '请带我去 青岛啤酒博物馆 (登州路56号)', pinyin: 'Qīngdǎo Píjiǔ Bówùguǎn', kr: '칭다오 맥주 박물관으로 가주세요.', tag: '명소' },
+      { title: '5·4 광장 (오월의 바람)', cn: '请带我去 五四广场', pinyin: 'Wǔsì Guǎngchǎng', kr: '5·4 광장으로 가주세요.', tag: '명소' },
+      { title: '잔교 (잔차오)', cn: '请带我去 栈桥', pinyin: 'Zhànqiáo', kr: '잔교로 가주세요.', tag: '명소' },
+      { title: '믹스씨 쇼핑몰', cn: '请带我去 万象城 (山东路6号)', pinyin: 'Wànxiàng Chéng', kr: '믹스씨 쇼핑몰로 가주세요.', tag: '쇼핑' },
+      { title: '타이둥 야시장', cn: '请带我去 台东步行街', pinyin: 'Tái Dōng Bùxíngjiē', kr: '타이둥 야시장으로 가주세요.', tag: '야시장' }
+    ];
+
+    const SURVIVAL_PHRASES = [
+      { kr: '고수 넣지 말아주세요! (필수)', cn: '不要香菜', pinyin: 'Bú yào xiāngcài', audioText: '부 야오 시앙차이', category: '식당' },
+      { kr: '덜 맵게 해주세요', cn: '少辣 / 微辣', pinyin: 'Shǎo là / Wēi là', audioText: '샤오 라 / 웨이 라', category: '식당' },
+      { kr: '얼마예요?', cn: '多少钱？', pinyin: 'Duōshao qián?', audioText: '두오샤오 치엔?', category: '쇼핑' },
+      { kr: '계산해 주세요 (마이딴)', cn: '买单', pinyin: 'Mǎidān', audioText: '마이딴', category: '식당' },
+      { kr: '알리페이 되나요?', cn: '可以支付宝吗？', pinyin: 'Kěyǐ Zhīfùbǎo ma?', audioText: '커이 즈푸바오 마?', category: '결제' },
+      { kr: '시원한 맥주 주세요 (빙피주)', cn: '我要冰啤酒', pinyin: 'Wǒ yào bīng píjiǔ', audioText: '워 야오 빙 피주', category: '식당' }
+    ];
+
+    const INITIAL_ITEMS = [
+      { id: 'd1-1', day: 1, startTime: '11:00', durationMinutes: 60, transitMinutes: 60, title: '칭다오 공항 도착 & 시내 이동', titleCn: '青岛胶东国际机场', pinyin: 'Qīngdǎo Jiāodōng Jīchǎng', category: 'transport', desc: '지하철 8호선 또는 택시 이용 시내 이동', estimatedCostCny: 30, completed: false, addressCn: '青岛胶东国际机场', tips: '디디(DiDi) 앱 탑승 추천', badges: { alipayRequired: true }, lat: 36.3278, lng: 120.0881 },
+      { id: 'd1-2', day: 1, startTime: '13:00', durationMinutes: 45, transitMinutes: 15, title: '호텔 체크인 & 짐 보관', titleCn: '酒店入住', pinyin: 'Jiǔdiàn rùzhù', category: 'hotel', desc: '중산로 근처 숙소 짐 보관', estimatedCostCny: 0, completed: false, addressCn: '青岛市市南区中山路', tips: '짐 보관 요청하기', badges: { walkingLevel: 'easy' }, lat: 36.0683, lng: 120.3158 },
+      { id: 'd1-3', day: 1, startTime: '14:00', durationMinutes: 60, transitMinutes: 20, title: '잔교 (잔차오) 산책', titleCn: '栈桥', pinyin: 'Zhànqiáo', category: 'attraction', desc: '칭다오 대표 상징 회란각 인증샷', estimatedCostCny: 0, completed: false, addressCn: '青岛市市南区太平路12号', tips: '갈매기 먹이주기 체험', badges: { walkingLevel: 'high' }, lat: 36.0592, lng: 120.3128 },
+      { id: 'd1-4', day: 1, startTime: '15:20', durationMinutes: 60, transitMinutes: 15, title: '성 미카엘 대성당', titleCn: '浙江路天主教堂', pinyin: 'Zhèjiāng Lù Tiānzhǔjiàotáng', category: 'attraction', desc: '유럽풍 고딕 성당', estimatedCostCny: 10, completed: false, addressCn: '青岛市市南区浙江路15号', tips: '광장 촬영 무료', badges: { walkingLevel: 'easy' }, lat: 36.0678, lng: 120.3154 },
+      { id: 'd1-5', day: 1, startTime: '16:35', durationMinutes: 90, transitMinutes: 20, title: '피차이위안 & 중산로 야시장', titleCn: '劈柴院 / 中山路', pinyin: 'Pǐchái Yuàn', category: 'food', desc: '100년 전통 먹거리 골목 꼬치구이', estimatedCostCny: 80, completed: false, addressCn: '青岛市市南区河北路16号', tips: '왕오징어 꼬치 추천', badges: { cilantroWarning: true, beerSpecial: true }, lat: 36.0712, lng: 120.3142 },
+      { id: 'd1-6', day: 1, startTime: '18:25', durationMinutes: 90, transitMinutes: 30, title: '5·4 광장 야경 & 레이저쇼', titleCn: '五四广场', pinyin: 'Wǔsì Guǎngchǎng', category: 'attraction', desc: '붉은 조형물 오월의 바람 야경', estimatedCostCny: 0, completed: false, addressCn: '青岛市市南区东海西路', tips: '레이저쇼 20:00 진행', badges: { walkingLevel: 'high' }, lat: 36.0618, lng: 120.3814 },
+      { id: 'd2-1', day: 2, startTime: '09:30', durationMinutes: 120, transitMinutes: 20, title: '바다관 (팔대관) 풍경구', titleCn: '八大关风景区', pinyin: 'Bādàguān', category: 'attraction', desc: '유럽식 휴양 건축물 산책', estimatedCostCny: 20, completed: false, addressCn: '青岛市市南区黄海路9号', tips: '화석楼 입장 추천', badges: { walkingLevel: 'high' }, lat: 36.0545, lng: 120.3478 },
+      { id: 'd2-2', day: 2, startTime: '11:50', durationMinutes: 90, transitMinutes: 20, title: '점심: 선가어수교 (만두)', titleCn: '船歌鱼水饺', pinyin: 'Chuángē Yú Shuǐjiǎo', category: 'food', desc: '먹물 삼치만두와 바지락 볶음', estimatedCostCny: 120, completed: false, addressCn: '青岛市市南区山东路6号万象城5楼', tips: '먹물만두 필수', badges: { cilantroWarning: true, alipayRequired: true }, lat: 36.0658, lng: 120.3802 },
+      { id: 'd2-3', day: 2, startTime: '13:40', durationMinutes: 120, transitMinutes: 20, title: '칭다오 맥주 박물관', titleCn: '青岛啤酒博物馆', pinyin: 'Qīngdǎo Píjiǔ Bówùguǎn', category: 'attraction', desc: '당일 생산 원장(原浆) 생맥주 시음!', estimatedCostCny: 60, completed: false, addressCn: '青岛市市北区登州路56号', tips: '생맥주 2잔 포함', badges: { beerSpecial: true }, lat: 36.0825, lng: 120.3524 },
+      { id: 'd2-4', day: 2, startTime: '16:00', durationMinutes: 120, transitMinutes: 15, title: '타이둥 야시장', titleCn: '台东步行街', pinyin: 'Tái Dōng Bùxíngjiē', category: 'shopping', desc: '봉지 맥주 체험 및 야시장 쇼핑', estimatedCostCny: 70, completed: false, addressCn: '青岛市市北区台东三路', tips: '비닐봉지 맥주 마시기', badges: { cilantroWarning: true, beerSpecial: true }, lat: 36.0882, lng: 120.3685 },
+      { id: 'd3-1', day: 3, startTime: '09:30', durationMinutes: 75, transitMinutes: 15, title: '샤오위산 (소어산) 공원', titleCn: '小鱼山公园', pinyin: 'Xiǎoyúshān', category: 'attraction', desc: '붉은 지붕 시가지 360도 파노라마', estimatedCostCny: 10, completed: false, addressCn: '青岛市市南区福山支路24号', tips: '전망대 탑 인생샷', badges: { walkingLevel: 'high' }, lat: 36.0588, lng: 120.3325 },
+      { id: 'd3-2', day: 3, startTime: '11:00', durationMinutes: 90, transitMinutes: 20, title: '점심: 하이디라오 훠궈', titleCn: '海底捞火锅', pinyin: 'Hǎidǐlāo', category: 'food', desc: '여행 마무리를 위한 든든한 훠궈', estimatedCostCny: 130, completed: false, addressCn: '万象城 5层', tips: '토마토탕 추천', badges: { cilantroWarning: true, alipayRequired: true }, lat: 36.0658, lng: 120.3802 },
+      { id: 'd3-3', day: 3, startTime: '12:50', durationMinutes: 90, transitMinutes: 45, title: '대윤발 마트 & 공항 이동', titleCn: '大润发 / 胶东机场', pinyin: 'Dàrùnfā', category: 'shopping', desc: '꿀맥주, 꿀땅콩 구매 후 출국 이동', estimatedCostCny: 200, completed: false, addressCn: '青岛市市南区宁夏路228号', tips: '출발 2.5시간 전 공항 도착', badges: { walkingLevel: 'easy' }, lat: 36.3278, lng: 120.0881 }
+    ];
+
+    const INITIAL_CHECKLIST = [
+      { id: '1', text: '여권 (유효기간 6개월 이상)', checked: true },
+      { id: '2', text: 'eSIM / 로밍 (VPN 내장형)', checked: true },
+      { id: '3', text: '알리페이(Alipay) 카드 등록 연동', checked: true },
+      { id: '4', text: '고덕지도(Amap) 앱 설치', checked: true },
+      { id: '5', text: '보조배터리 (기내 수하물)', checked: true },
+      { id: '6', text: '비상금 위안화 현금 (200~300元)', checked: false }
+    ];
+
+    // State Variables
+    let activeTab = 'itinerary';
+    let selectedDay = 1;
+    let selectedMapDay = 1;
+    let exchangeRate = 190;
+    let leafletMap = null;
+    let mapMarkers = [];
+    let mapPolyline = null;
+
+    let allItinerary = JSON.parse(localStorage.getItem('qingdao_all_itinerary_v4')) || INITIAL_ITEMS;
+    let backupPool = JSON.parse(localStorage.getItem('qingdao_backup_pool_v4')) || [];
+    let expenses = JSON.parse(localStorage.getItem('qingdao_expenses_v4')) || [
+      { id: '1', title: '1일차 점심 꼬치', amountCny: 80, payer: '나', date: 'Day 1' },
+      { id: '2', text: '맥주 박물관 입장료 (2인)', amountCny: 120, payer: '친구 A', date: 'Day 2' }
+    ];
+    let checklist = JSON.parse(localStorage.getItem('qingdao_checklist_v4')) || INITIAL_CHECKLIST;
+
+    function saveAllData() {
+      localStorage.setItem('qingdao_all_itinerary_v4', JSON.stringify(allItinerary));
+      localStorage.setItem('qingdao_backup_pool_v4', JSON.stringify(backupPool));
+      localStorage.setItem('qingdao_expenses_v4', JSON.stringify(expenses));
+      localStorage.setItem('qingdao_checklist_v4', JSON.stringify(checklist));
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').innerText = msg;
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 2500);
+    }
+
+    // Time Utility Functions
+    function timeToMinutes(t) {
+      const [h, m] = t.split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    }
+    function minutesToTime(m) {
+      const norm = (m + 24 * 60) % (24 * 60);
+      return `${String(Math.floor(norm / 60)).padStart(2, '0')}:${String(norm % 60).padStart(2, '0')}`;
+    }
+    function recalculateCascade(items) {
+      return items.map((item, idx) => {
+        if (idx === 0) return item;
+        const prev = items[idx - 1];
+        const prevEnd = timeToMinutes(prev.startTime) + prev.durationMinutes + prev.transitMinutes;
+        return { ...item, startTime: minutesToTime(prevEnd) };
+      });
+    }
+
+    // Calculate Geodesic Distance between two LatLngs in km
+    function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+      if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return (R * c).toFixed(1);
+    }
+
+    // External Map Navigation Links
+    function openAmap(titleCn, addressCn) {
+      const query = encodeURIComponent(`${titleCn} ${addressCn}`);
+      window.open(`https://uri.amap.com/search?keyword=${query}&src=qingdao_app`, '_blank');
+    }
+    function openBaidu(titleCn, addressCn) {
+      const query = encodeURIComponent(`${titleCn} ${addressCn}`);
+      window.open(`https://api.map.baidu.com/geocoder?address=${query}&output=html&src=qingdao_app`, '_blank');
+    }
+
+    // Chinese TTS Speech Synthesis Function
+    function speakChinese(text) {
+      if (!('speechSynthesis' in window)) {
+        showToast('사용 중인 브라우저에서 음성 재생을 지원하지 않습니다.');
+        return;
+      }
+      window.speechSynthesis.cancel(); // Stop previous speech
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'zh-CN';
+      utterance.rate = 0.9; // Slightly slower pace for clarity
+      window.speechSynthesis.speak(utterance);
+      showToast('🔊 중국어 음성을 재생합니다.');
+    }
+
+    // Render Tab Views
+    function switchTab(tab) {
+      activeTab = tab;
+      ['itinerary', 'map', 'calc', 'survival', 'food', 'checklist'].forEach(t => {
+        const btn = document.getElementById(`nav-${t}`);
+        if (btn) {
+          if (t === tab) {
+            btn.className = 'flex flex-col items-center py-1 px-2 rounded-xl text-amber-400 font-bold scale-105 transition';
+          } else {
+            btn.className = 'flex flex-col items-center py-1 px-2 rounded-xl text-slate-400 hover:text-slate-200 transition';
+          }
+        }
+      });
+      render();
+    }
+
+    function render() {
+      const container = document.getElementById('tab-content');
+      container.innerHTML = '';
+
+      if (activeTab === 'itinerary') renderItinerary(container);
+      else if (activeTab === 'map') renderMapView(container);
+      else if (activeTab === 'calc') renderCalc(container);
+      else if (activeTab === 'survival') renderSurvival(container);
+      else if (activeTab === 'food') renderFood(container);
+      else if (activeTab === 'checklist') renderChecklist(container);
+
+      lucide.createIcons();
+    }
+
+    // --- TAB 1: ITINERARY ---
+    function renderItinerary(container) {
+      const dayItems = selectedDay === 'backup'
+        ? backupPool
+        : selectedDay === 'all'
+          ? allItinerary
+          : allItinerary.filter(i => i.day === selectedDay);
+
+      container.innerHTML = `
+        <div class="flex items-center justify-between bg-slate-900 p-1.5 rounded-2xl border border-slate-800">
+          ${[1, 2, 3].map(d => `
+            <button onclick="selectedDay=${d}; render();" class="flex-1 py-2 text-xs font-bold rounded-xl ${selectedDay === d ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400'}">
+              Day ${d}
+            </button>
+          `).join('')}
+          <button onclick="selectedDay='all'; render();" class="px-3 py-2 text-xs font-bold rounded-xl ${selectedDay === 'all' ? 'bg-amber-500/20 text-amber-400' : 'text-slate-400'}">전체</button>
+          <button onclick="selectedDay='backup'; render();" class="px-3 py-2 text-xs font-bold rounded-xl ${selectedDay === 'backup' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400'}">예비 (${backupPool.length})</button>
+        </div>
+
+        <div class="space-y-3">
+          ${dayItems.map((item, idx) => `
+            <div class="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs font-mono font-bold text-cyan-400 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
+                    ${item.startTime}
+                  </span>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                    Day ${item.day}
+                  </span>
+                </div>
+                <div class="flex items-center space-x-1">
+                  <button onclick="moveOrder('${item.id}', 'up')" class="p-1 text-slate-400"><i data-lucide="arrow-up" class="w-3.5 h-3.5"></i></button>
+                  <button onclick="moveOrder('${item.id}', 'down')" class="p-1 text-slate-400"><i data-lucide="arrow-down" class="w-3.5 h-3.5"></i></button>
+                  <button onclick="moveToBackupPool('${item.id}')" class="p-1 text-emerald-400"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex items-baseline justify-between">
+                  <h3 class="font-bold text-sm text-slate-100">${item.title}</h3>
+                  <span class="text-xs font-bold text-amber-400">¥${item.estimatedCostCny}</span>
+                </div>
+                <p class="text-xs font-semibold text-amber-400/90 mt-0.5">${item.titleCn}</p>
+
+                <!-- Editable Address Inputs -->
+                <div class="mt-2 space-y-1.5 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="text-slate-400 font-semibold">📍 장소명 수동 수정:</span>
+                    <input 
+                      type="text" 
+                      value="${item.titleCn}" 
+                      onchange="updateItemField('${item.id}', 'titleCn', this.value)"
+                      class="bg-slate-900 text-amber-400 font-bold px-2 py-0.5 rounded border border-slate-700 text-right w-36 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between text-[11px]">
+                    <span class="text-slate-400 font-semibold">🏠 세부주소 수동 수정:</span>
+                    <input 
+                      type="text" 
+                      value="${item.addressCn}" 
+                      onchange="updateItemField('${item.id}', 'addressCn', this.value)"
+                      class="bg-slate-900 text-slate-200 px-2 py-0.5 rounded border border-slate-700 text-right w-40 focus:outline-none focus:border-cyan-400 text-[10px]"
+                    />
+                  </div>
+                </div>
+
+                <p class="text-xs text-slate-300 mt-1.5">${item.desc}</p>
+              </div>
+
+              <!-- Map Deep Link Navigation Buttons -->
+              <div class="flex items-center justify-between pt-2 border-t border-slate-800 gap-1.5">
+                <button onclick="openAmap('${item.titleCn}', '${item.addressCn}')" class="flex-1 py-1.5 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1">
+                  <i data-lucide="compass" class="w-3 h-3"></i> 고덕지도 길찾기
+                </button>
+                <button onclick="openBaidu('${item.titleCn}', '${item.addressCn}')" class="flex-1 py-1.5 bg-blue-950 hover:bg-blue-900 text-blue-300 border border-blue-800 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1">
+                  <i data-lucide="map-pin" class="w-3 h-3"></i> 바이두 길찾기
+                </button>
+                <button onclick="openTaxiModal('${item.title}', '${item.addressCn}', '${item.pinyin}')" class="py-1.5 px-3 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-[11px] font-bold">
+                  중국어 번역
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // --- TAB 2: SMART MAP VIEW ---
+    function renderMapView(container) {
+      // 기존 맵 객체가 있다면 초기화
+      if (leafletMap) {
+        leafletMap.remove();
+        leafletMap = null;
+      }
+
+      container.innerHTML = `
+        <div class="space-y-3">
+          <div class="flex items-center justify-between bg-slate-900 p-1.5 rounded-2xl border border-slate-800">
+            ${[1, 2, 3].map(d => `
+              <button onclick="selectedMapDay=${d}; initOrUpdateMap();" class="flex-1 py-2 text-xs font-bold rounded-xl ${selectedMapDay === d ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400'}">
+                Day ${d} 동선 지도
+              </button>
+            `).join('')}
+          </div>
+
+          <!-- Interactive Leaflet Map Box -->
+          <div id="map-container" class="w-full h-80 min-h-[320px] bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-lg relative z-10"></div>
+
+          <!-- Day Route Distance Summary -->
+          <div id="map-route-summary" class="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-2">
+            <h3 class="text-xs font-bold text-amber-400 flex items-center gap-1">
+              <i data-lucide="navigation" class="w-4 h-4"></i>
+              <span>Day ${selectedMapDay} 주요 동선 및 거리 정보</span>
+            </h3>
+            <div id="route-list" class="space-y-1.5 text-xs text-slate-300"></div>
+          </div>
+        </div>
+      `;
+
+      // 탭 전환 시 지도가 깔끔하게 그려지도록 200ms 후 초기화 실행
+      setTimeout(() => initOrUpdateMap(), 200);
+    }
+
+    function initOrUpdateMap() {
+      const dayItems = allItinerary.filter(i => i.day === selectedMapDay);
+      if (dayItems.length === 0) return;
+
+      if (!leafletMap) {
+        leafletMap = L.map('map-container').setView([dayItems[0].lat, dayItems[0].lng], 13);
+        
+        // Fastly 글로벌 CDN 및 CartoDB 오픈 타일 서버 (API Key / Referrer 차단 없는 타일)
+        L.tileLayer('https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png', {
+          maxZoom: 18,
+          attribution: '&copy; OpenStreetMap & &copy; CARTO'
+        }).addTo(leafletMap);
+
+        // 지도가 활성화될 때 레이아웃 컨테이너 재계산 (회색 화면 방지)
+        setTimeout(() => {
+          if (leafletMap) leafletMap.invalidateSize();
+        }, 300);
+      } else {
+        setTimeout(() => {
+          if (leafletMap) leafletMap.invalidateSize();
+        }, 150);
+      }
+
+      // Clear existing markers & polyline
+      mapMarkers.forEach(m => leafletMap.removeLayer(m));
+      mapMarkers = [];
+      if (mapPolyline) leafletMap.removeLayer(mapPolyline);
+
+      const latLngs = [];
+      const routeListHtml = [];
+
+      dayItems.forEach((item, idx) => {
+        if (!item.lat || !item.lng) return;
+
+        const pos = [item.lat, item.lng];
+        latLngs.push(pos);
+
+        // Sequence Numbered Marker
+        const customIcon = L.divIcon({
+          className: 'custom-map-marker',
+          html: `<span>${idx + 1}</span>`,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        });
+
+        const marker = L.marker(pos, { icon: customIcon }).addTo(leafletMap);
+        marker.bindPopup(`
+          <div class="text-slate-100 p-1 space-y-2">
+            <div class="font-black text-sm text-amber-400">${idx + 1}. ${item.title}</div>
+            <div class="text-xs text-slate-300">${item.addressCn}</div>
+            <div class="text-[11px] text-cyan-400 font-bold">⏰ ${item.startTime} (${item.durationMinutes}분 체류)</div>
+            <div class="flex gap-1 pt-1">
+              <button onclick="openAmap('${item.titleCn}', '${item.addressCn}')" class="flex-1 py-1 bg-cyan-600 text-white text-[10px] rounded font-bold">고덕 길찾기</button>
+              <button onclick="openTaxiModal('${item.title}', '${item.addressCn}', '${item.pinyin}')" class="flex-1 py-1 bg-amber-500 text-slate-950 text-[10px] rounded font-bold">번역 카드</button>
+            </div>
+          </div>
+        `);
+        mapMarkers.push(marker);
+
+        // Distance Calculation between consecutive items
+        if (idx > 0) {
+          const prev = dayItems[idx - 1];
+          const dist = calculateDistanceKm(prev.lat, prev.lng, item.lat, item.lng);
+          routeListHtml.push(`
+            <div class="flex items-center justify-between p-2 bg-slate-950 rounded-xl border border-slate-800">
+              <span>${prev.title} ➔ ${item.title}</span>
+              <span class="font-mono font-bold text-cyan-400">약 ${dist} km</span>
+            </div>
+          `);
+        }
+      });
+
+      // Draw Polyline Route Line
+      if (latLngs.length > 1) {
+        mapPolyline = L.polyline(latLngs, { color: '#f59e0b', weight: 4, opacity: 0.8, dashArray: '6, 8' }).addTo(leafletMap);
+        leafletMap.fitBounds(mapPolyline.getBounds(), { padding: [30, 30] });
+      } else if (latLngs.length === 1) {
+        leafletMap.setView(latLngs[0], 14);
+      }
+
+      document.getElementById('route-list').innerHTML = routeListHtml.length > 0
+        ? routeListHtml.join('')
+        : '<p class="text-slate-500 text-xs">등록된 이동 경로가 없습니다.</p>';
+    }
+
+    // --- TAB 3: CURRENCY & EXPENSES ---
+    function renderCalc(container) {
+      container.innerHTML = `
+        <div class="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3">
+          <h2 class="font-bold text-slate-100 text-sm">실시간 환율 계산기 (1元 = ${exchangeRate}원)</h2>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <span class="text-[10px] text-slate-400">중국 위안 (CNY ¥)</span>
+              <input type="number" id="cny-in" oninput="convertCny(this.value)" placeholder="0" class="w-full bg-transparent text-lg font-black text-amber-400 focus:outline-none" />
+            </div>
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <span class="text-[10px] text-slate-400">한국 원화 (KRW ₩)</span>
+              <input type="number" id="krw-in" readonly placeholder="0" class="w-full bg-transparent text-lg font-black text-cyan-400 focus:outline-none" />
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    function convertCny(val) {
+      const num = parseFloat(val) || 0;
+      document.getElementById('krw-in').value = Math.round(num * exchangeRate);
+    }
+
+    // --- TAB 4: SURVIVAL / TRANSPORT CARDS ---
+    function renderSurvival(container) {
+      container.innerHTML = `
+        <div class="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3">
+          <h2 class="font-bold text-slate-100 text-sm">택시 기사님 중국어 번역 카드리스트</h2>
+          <div class="space-y-2">
+            ${TAXI_CARDS.map(c => `
+              <div onclick="openTaxiModal('${c.title}', '${c.cn}', '${c.pinyin}')" class="p-3 bg-slate-950 rounded-xl border border-slate-800 hover:border-amber-400/60 cursor-pointer flex justify-between items-center">
+                <div>
+                  <div class="text-xs font-bold text-slate-200">${c.title}</div>
+                  <div class="text-sm font-black text-amber-400 mt-1">${c.cn}</div>
+                </div>
+                <span class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 font-semibold">번역 보기</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    // --- TAB 5: FOOD GUIDE ---
+    function renderFood(container) {
+      container.innerHTML = `
+        <div class="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3">
+          <h2 class="font-bold text-amber-400 text-sm">🍺 칭다오 원장 생맥주 & 먹거리 가이드</h2>
+          <p class="text-xs text-slate-300">유통기한 7일 원장 맥주(原浆)와 바지락 볶음(辣炒嘎啦) 조합 필수!</p>
+        </div>
+      `;
+    }
+
+    // --- TAB 6: CHECKLIST ---
+    function renderChecklist(container) {
+      container.innerHTML = `
+        <div class="bg-slate-900 rounded-2xl p-4 border border-slate-800 space-y-3">
+          <h2 class="font-bold text-slate-100 text-sm">여행 준비물 체크리스트</h2>
+          <div class="space-y-2">
+            ${checklist.map(c => `
+              <div onclick="toggleCheck('${c.id}')" class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between cursor-pointer">
+                <span class="text-xs ${c.checked ? 'line-through text-slate-500' : 'text-slate-200'}">${c.text}</span>
+                <i data-lucide="${c.checked ? 'check-circle' : 'circle'}" class="w-4 h-4 ${c.checked ? 'text-emerald-400' : 'text-slate-600'}"></i>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function toggleCheck(id) {
+      checklist = checklist.map(c => c.id === id ? { ...c, checked: !c.checked } : c);
+      saveAllData();
+      render();
+    }
+
+    function updateItemField(id, field, value) {
+      allItinerary = allItinerary.map(i => i.id === id ? { ...i, [field]: value.trim() } : i);
+      saveAllData();
+      showToast('장소 및 주소가 수정되었습니다!');
+    }
+
+    function moveOrder(id, dir) {
+      const idx = allItinerary.findIndex(i => i.id === id);
+      if (idx === -1) return;
+      if (dir === 'up' && idx > 0) {
+        const temp = allItinerary[idx];
+        allItinerary[idx] = allItinerary[idx - 1];
+        allItinerary[idx - 1] = temp;
+      } else if (dir === 'down' && idx < allItinerary.length - 1) {
+        const temp = allItinerary[idx];
+        allItinerary[idx] = allItinerary[idx + 1];
+        allItinerary[idx + 1] = temp;
+      }
+      saveAllData();
+      render();
+    }
+
+    function moveToBackupPool(id) {
+      const item = allItinerary.find(i => i.id === id);
+      if (!item) return;
+      allItinerary = allItinerary.filter(i => i.id !== id);
+      backupPool.unshift(item);
+      saveAllData();
+      showToast(`"${item.title}" 일정이 예비목록으로 이동되었습니다.`);
+      render();
+    }
+
+    function openTaxiModal(title, addressCn, pinyin) {
+      const overlay = document.getElementById('modal-overlay');
+      const body = document.getElementById('modal-body');
+      body.innerHTML = `
+        <div class="text-center space-y-4">
+          <span class="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold">🚕 기사님께 스크린을 보여주세요</span>
+          <div class="py-3 space-y-2">
+            <h3 class="text-slate-300 text-sm font-semibold">${title}</h3>
+            <p class="text-2xl font-black text-amber-400 leading-snug">${addressCn}</p>
+            <p class="text-xs text-slate-400">${pinyin || ''}</p>
+          </div>
+
+          <!-- 중국어 발음 읽어주기 TTS 버튼 -->
+          <button onclick="speakChinese('${addressCn.replace(/'/g, "\\'")}')" class="w-full py-2.5 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-700/80 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+            <i data-lucide="volume-2" class="w-4 h-4"></i>
+            <span>🔊 중국어 음성 재생 (스피커)</span>
+          </button>
+
+          <button onclick="closeModal()" class="w-full py-2.5 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl">닫기</button>
+        </div>
+      `;
+      overlay.classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeModal() {
+      document.getElementById('modal-overlay').classList.add('hidden');
+    }
+
+    function openBackupModal() {
+      const overlay = document.getElementById('modal-overlay');
+      const body = document.getElementById('modal-body');
+      body.innerHTML = `
+        <div class="space-y-4">
+          <h3 class="text-sm font-bold text-slate-100">일정 백업 및 복원</h3>
+          <button onclick="downloadJSON()" class="w-full py-2.5 bg-cyan-600 text-white text-xs font-bold rounded-xl">JSON 파일 내보내기</button>
+          <button onclick="closeModal()" class="w-full py-2 bg-slate-800 text-slate-300 text-xs rounded-xl">닫기</button>
+        </div>
+      `;
+      overlay.classList.remove('hidden');
+    }
+
+    function downloadJSON() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ allItinerary, backupPool, expenses, checklist }));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `qingdao_plan.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function resetData() {
+      if (confirm('모든 변경사항을 초기화하시겠습니까?')) {
+        localStorage.clear();
+        location.reload();
+      }
+    }
+
+    // App Initialization
+    window.onload = function() {
+      render();
+    };
+  </script>
+</body>
+</html>

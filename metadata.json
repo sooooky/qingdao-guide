@@ -1,0 +1,6 @@
+{
+  "name": "칭다오 스마트 여행 플래너 & 서바이벌 툴킷",
+  "description": "칭다오 2박 3일 여행을 위한 스마트 동선 지도, 택시 기사 소통 중국어 카드 & 음성 TTS, 실시간 환율 & N빵 정산기, 맥주/맛집 가이드 및 서바이벌 툴킷",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
