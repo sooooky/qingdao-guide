@@ -423,17 +423,20 @@ export default function App() {
   ]);
 
   // Create a brand new collaboration room explicitly on user action
-  const handleCreateNewRoom = () => {
+  const handleCreateNewRoom = async () => {
     const newId = generateRandomRoomId();
     setRoomId(newId);
     try {
       const url = new URL(window.location.href);
       url.searchParams.set('room', newId);
       window.history.replaceState(null, '', url.toString());
+
+      await navigator.clipboard.writeText(url.toString());
+      showToast(`🔗 실시간 공유방 (${newId})이 생성되고 링크가 복사되었습니다!`);
     } catch (e) {
       console.error(e);
+      showToast(`✨ 실시간 공유방 (${newId})이 생성되었습니다!`);
     }
-    showToast(`새로운 실시간 공유 방 (${newId})이 생성되었습니다!`);
   };
 
   // Reset to original data
@@ -575,6 +578,7 @@ export default function App() {
         onOpenNav={() => setIsNavOpen(true)}
         currentTab={activeTab}
         onOpenShare={() => setIsShareOpen(true)}
+        onCreateNewRoom={handleCreateNewRoom}
         onOpenBackup={() => setIsBackupOpen(true)}
         onOpenVault={() => setIsVaultOpen(true)}
         vaultCount={totalVaultCount}
