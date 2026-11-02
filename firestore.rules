@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// Real-time rooms for the Qingdao planner (see src/utils/firebase.ts).
+// Anyone who knows a room ID (shared via ?room= link) can read and edit that room,
+// after anonymous sign-in. Listing rooms and deleting them is not allowed.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rooms/{roomId} {
+      function validRoom() {
+        let data = request.resource.data;
+        return roomId.matches('^[a-z0-9]{10,32}$')
+          && data.keys().hasOnly([
+            'allItinerary', 'backupPool', 'expenses', 'foodPlaces', 'wishlist',
+            'members', 'exchangeRate', 'createdAt', 'updatedAt', 'lastUpdatedBy'
+          ])
+          && (!('members' in data) || data.members is list)
+          && (!('exchangeRate' in data) || data.exchangeRate is number);
+      }
+
+      allow get: if request.auth != null;
+      allow create, update: if request.auth != null && validRoom();
+      allow list, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

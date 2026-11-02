@@ -14,6 +14,7 @@ interface BackupModalProps {
     wishlist?: WishlistItem[];
     phrases?: SurvivalPhrase[];
     exchangeRate: number;
+    members?: string[];
   };
   onImport: (importedData: any) => void;
   onShowToast: (msg: string) => void;

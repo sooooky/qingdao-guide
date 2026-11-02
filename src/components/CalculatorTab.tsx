@@ -17,6 +17,8 @@ interface CalculatorTabProps {
   onUpdateExchangeRate: (rate: number) => void;
   expenses: ExpenseItem[];
   onUpdateExpenses: (expenses: ExpenseItem[]) => void;
+  members: string[];
+  onUpdateMembers: (members: string[]) => void;
   onShowToast: (msg: string) => void;
 }
 
@@ -25,21 +27,24 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
   onUpdateExchangeRate,
   expenses,
   onUpdateExpenses,
+  members,
+  onUpdateMembers,
   onShowToast,
 }) => {
   const [cnyInput, setCnyInput] = useState<string>('100');
   const [krwInput, setKrwInput] = useState<string>(String(100 * exchangeRate));
 
-  // Members state
-  const [members, setMembers] = useState<string[]>(['나', '동행1']);
   const [newMemberName, setNewMemberName] = useState<string>('');
 
   // Add expense form state
   const [expenseTitle, setExpenseTitle] = useState('');
   const [expenseAmountCny, setExpenseAmountCny] = useState<string>('');
-  const [expensePayer, setExpensePayer] = useState<string>('나');
+  const [payerChoice, setExpensePayer] = useState<string>(members[0] || '');
+  // Members can change remotely (shared room), so fall back to the first member.
+  const expensePayer = members.includes(payerChoice) ? payerChoice : members[0] || '';
   const [expenseCategory, setExpenseCategory] = useState<ExpenseItem['category']>('식사/맥주');
-  const [selectedSplitMembers, setSelectedSplitMembers] = useState<string[]>(['나', '동행1']);
+  const [splitChoice, setSelectedSplitMembers] = useState<string[]>(members);
+  const selectedSplitMembers = splitChoice.filter((m) => members.includes(m));
 
   // Currency converter handlers
   const handleCnyChange = (val: string) => {
@@ -80,7 +85,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
       return;
     }
     const updated = [...members, trimmed];
-    setMembers(updated);
+    onUpdateMembers(updated);
     setSelectedSplitMembers(updated);
     setNewMemberName('');
     onShowToast(`멤버 "${trimmed}"이(가) 추가되었습니다.`);
@@ -92,7 +97,7 @@ export const CalculatorTab: React.FC<CalculatorTabProps> = ({
       return;
     }
     const updated = members.filter((m) => m !== name);
-    setMembers(updated);
+    onUpdateMembers(updated);
     setSelectedSplitMembers((prev) => prev.filter((m) => m !== name));
     if (expensePayer === name) setExpensePayer(updated[0]);
   };

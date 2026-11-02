@@ -15,6 +15,7 @@ import { BackupModal } from './components/BackupModal';
 import { AddItemModal } from './components/AddItemModal';
 import { AttachmentViewerModal } from './components/AttachmentViewerModal';
 import { OfflineVaultModal } from './components/OfflineVaultModal';
+import { ShareModal } from './components/ShareModal';
 
 import {
   ScheduleItem,
@@ -36,6 +37,8 @@ import {
   SURVIVAL_PHRASES,
 } from './data/initialData';
 import { timeToMinutes, minutesToTime } from './utils/geo';
+import { SharedState, createRoom, generateRandomRoomId, isValidRoomId } from './utils/firebase';
+import { useRoomSync, serializeSharedState, describeSyncError } from './hooks/useRoomSync';
 
 const STORAGE_KEYS = {
   ITINERARY: 'qingdao_itinerary_v5',
@@ -46,7 +49,22 @@ const STORAGE_KEYS = {
   WISHLIST: 'qingdao_wishlist_v5',
   PHRASES: 'qingdao_survival_phrases_v5',
   EXCHANGE_RATE: 'qingdao_rate_v5',
+  MEMBERS: 'qingdao_members_v5',
+  ROOM_ID: 'qingdao_room_id_v1',
 };
+
+const DEFAULT_MEMBERS = ['나', '동행1'];
+
+function setRoomInUrl(roomId: string | null) {
+  try {
+    const url = new URL(window.location.href);
+    if (roomId) url.searchParams.set('room', roomId);
+    else url.searchParams.delete('room');
+    window.history.replaceState(null, '', url.toString());
+  } catch {
+    // ignore
+  }
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('itinerary');
@@ -124,7 +142,28 @@ export default function App() {
     }
   });
 
+  const [members, setMembers] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.MEMBERS);
+      return saved ? JSON.parse(saved) : DEFAULT_MEMBERS;
+    } catch {
+      return DEFAULT_MEMBERS;
+    }
+  });
+
+  // Real-time room (Firestore). null = personal mode, data stays on this device only.
+  const [roomId, setRoomId] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.ROOM_ID);
+      return isValidRoomId(saved) ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+  const [syncError, setSyncError] = useState<string | null>(null);
+
   // Modals & Navigation state
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isBackupOpen, setIsBackupOpen] = useState(false);
   const [isVaultOpen, setIsVaultOpen] = useState(false);
@@ -210,9 +249,109 @@ export default function App() {
     }
   }, [phrases]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.EXCHANGE_RATE, String(exchangeRate));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [exchangeRate]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [members]);
+
+  useEffect(() => {
+    try {
+      if (roomId) localStorage.setItem(STORAGE_KEYS.ROOM_ID, roomId);
+      else localStorage.removeItem(STORAGE_KEYS.ROOM_ID);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [roomId]);
+
+  const sharedState: SharedState = {
+    allItinerary,
+    backupPool,
+    expenses,
+    foodPlaces,
+    wishlist,
+    members,
+    exchangeRate,
+  };
+
+  const { status: syncStatus, clientId } = useRoomSync({
+    roomId,
+    state: sharedState,
+    onRemoteChange: (next) => {
+      if (next.allItinerary) setAllItinerary(next.allItinerary);
+      if (next.backupPool) setBackupPool(next.backupPool);
+      if (next.expenses) setExpenses(next.expenses);
+      if (next.foodPlaces) setFoodPlaces(next.foodPlaces);
+      if (next.wishlist) setWishlist(next.wishlist);
+      if (next.members) setMembers(next.members);
+      if (next.exchangeRate !== undefined) setExchangeRate(next.exchangeRate);
+    },
+    onRoomMissing: () => {
+      setRoomId(null);
+      setRoomInUrl(null);
+      showToast('공유 방을 찾을 수 없습니다. 링크를 다시 확인해주세요.');
+    },
+    onError: (message) => setSyncError(message),
+  });
+
+  // Joining via ?room= link: confirm, then the room's data overwrites local shared data.
+  useEffect(() => {
+    const urlRoom = new URLSearchParams(window.location.search).get('room');
+    if (!urlRoom) return;
+    if (!isValidRoomId(urlRoom)) {
+      setRoomInUrl(null);
+      return;
+    }
+    if (urlRoom === roomId) return;
+    const ok = window.confirm(
+      `공유 방(${urlRoom})에 참여할까요?\n\n일정·경비·환율·맛집·위시리스트가 방의 데이터로 바뀝니다. ` +
+        `(체크리스트·회화·첨부 사진은 유지됩니다)\n기존 데이터가 필요하면 '취소' 후 백업을 먼저 받아두세요.`
+    );
+    if (ok) {
+      setSyncError(null);
+      setRoomId(urlRoom);
+    } else {
+      setRoomInUrl(roomId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleCreateRoom = () => {
+    const newRoomId = generateRandomRoomId();
+    setSyncError(null);
+    createRoom(newRoomId, serializeSharedState(sharedState), clientId).catch((err) => {
+      setSyncError(describeSyncError(err));
+      setRoomId((curr) => (curr === newRoomId ? null : curr));
+      setRoomInUrl(null);
+    });
+    setRoomId(newRoomId);
+    setRoomInUrl(newRoomId);
+    showToast('실시간 공유 방이 만들어졌습니다. 링크를 동행에게 보내주세요!');
+  };
+
+  const handleLeaveRoom = () => {
+    setRoomId(null);
+    setSyncError(null);
+    setRoomInUrl(null);
+    showToast('공유 방에서 나왔습니다. 현재 데이터는 이 기기에 남아 있습니다.');
+  };
+
   // Reset to original data
   const handleResetData = () => {
-    if (window.confirm('모든 변경사항과 지출 내역을 초기화하시겠습니까?')) {
+    const message = roomId
+      ? '모든 변경사항과 지출 내역을 초기화하시겠습니까?\n공유 방에 참여 중이라 동행 모두의 일정·경비도 초기화됩니다.'
+      : '모든 변경사항과 지출 내역을 초기화하시겠습니까?';
+    if (window.confirm(message)) {
       localStorage.removeItem(STORAGE_KEYS.ITINERARY);
       localStorage.removeItem(STORAGE_KEYS.BACKUP);
       localStorage.removeItem(STORAGE_KEYS.EXPENSES);
@@ -221,6 +360,7 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEYS.WISHLIST);
       localStorage.removeItem(STORAGE_KEYS.PHRASES);
       localStorage.removeItem(STORAGE_KEYS.EXCHANGE_RATE);
+      localStorage.removeItem(STORAGE_KEYS.MEMBERS);
       setAllItinerary(INITIAL_ITINERARY);
       setBackupPool(INITIAL_BACKUP_POOL);
       setExpenses(INITIAL_EXPENSES);
@@ -229,6 +369,7 @@ export default function App() {
       setWishlist(INITIAL_WISHLIST_ITEMS);
       setPhrases(SURVIVAL_PHRASES);
       setExchangeRate(190);
+      setMembers(DEFAULT_MEMBERS);
       showToast('초기 데이터로 재설정되었습니다.');
     }
   };
@@ -243,6 +384,7 @@ export default function App() {
     if (imported.wishlist) setWishlist(imported.wishlist);
     if (imported.phrases) setPhrases(imported.phrases);
     if (imported.exchangeRate) setExchangeRate(imported.exchangeRate);
+    if (Array.isArray(imported.members) && imported.members.length > 0) setMembers(imported.members);
   };
 
   // Total attachments across all items for header counter
@@ -348,6 +490,9 @@ export default function App() {
       <Header
         onOpenNav={() => setIsNavOpen(true)}
         currentTab={activeTab}
+        onOpenShare={() => setIsShareOpen(true)}
+        syncStatus={syncStatus}
+        roomId={roomId || undefined}
         onOpenBackup={() => setIsBackupOpen(true)}
         onOpenVault={() => setIsVaultOpen(true)}
         vaultCount={totalVaultCount}
@@ -409,6 +554,8 @@ export default function App() {
             onUpdateExchangeRate={setExchangeRate}
             expenses={expenses}
             onUpdateExpenses={setExpenses}
+            members={members}
+            onUpdateMembers={setMembers}
             onShowToast={showToast}
           />
         )}
@@ -489,6 +636,20 @@ export default function App() {
         onShowToast={showToast}
       />
 
+      {/* Real-time Room Share Modal */}
+      <ShareModal
+        isOpen={isShareOpen}
+        onClose={() => setIsShareOpen(false)}
+        roomId={roomId || ''}
+        allItinerary={allItinerary}
+        exchangeRate={exchangeRate}
+        syncStatus={syncStatus}
+        syncError={syncError}
+        onCreateNewRoom={handleCreateRoom}
+        onLeaveRoom={handleLeaveRoom}
+        onShowToast={showToast}
+      />
+
       {/* Backup & Share Modal */}
       <BackupModal
         isOpen={isBackupOpen}
@@ -502,6 +663,7 @@ export default function App() {
           wishlist,
           phrases,
           exchangeRate,
+          members,
         }}
         onImport={handleImportBackup}
         onShowToast={showToast}
