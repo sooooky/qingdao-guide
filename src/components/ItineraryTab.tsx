@@ -23,6 +23,7 @@ import {
   Check,
   X,
   Paperclip,
+  Pencil,
 } from 'lucide-react';
 import { ScheduleItem, DayNumber, ItemAttachment } from '../types';
 import { openAmap, openBaidu, recalculateCascade } from '../utils/geo';
@@ -47,6 +48,7 @@ interface ItineraryTabProps {
     onDelete?: (attId: string) => void
   ) => void;
   onOpenAddItem: (day: DayNumber) => void;
+  onOpenEditItem: (item: ScheduleItem, isBackup: boolean) => void;
   onShowToast: (msg: string) => void;
 }
 
@@ -59,10 +61,10 @@ export const ItineraryTab: React.FC<ItineraryTabProps> = ({
   onOpenTaxiModal,
   onOpenAttachmentViewer,
   onOpenAddItem,
+  onOpenEditItem,
   onShowToast,
 }) => {
   const [selectedDay, setSelectedDay] = useState<'all' | 'backup' | DayNumber>(1);
-  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Personal notes inline editor state
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -113,24 +115,27 @@ export const ItineraryTab: React.FC<ItineraryTabProps> = ({
     }
   };
 
+  // Swaps with the neighbouring item of the same day, then recalculates that day's start
+  // times from the day's original first start time.
   const handleMoveOrder = (id: string, direction: 'up' | 'down') => {
-    const list = [...allItinerary];
-    const currentIndex = list.findIndex((i) => i.id === id);
-    if (currentIndex === -1) return;
+    const item = allItinerary.find((i) => i.id === id);
+    if (!item) return;
+    const dayItems = allItinerary.filter((i) => i.day === item.day);
+    const index = dayItems.findIndex((i) => i.id === id);
+    const target = direction === 'up' ? index - 1 : index + 1;
+    if (target < 0 || target >= dayItems.length) return;
 
-    if (direction === 'up' && currentIndex > 0) {
-      const temp = list[currentIndex];
-      list[currentIndex] = list[currentIndex - 1];
-      list[currentIndex - 1] = temp;
-      onUpdateItinerary(list);
-      onShowToast('일정 순서가 위로 이동되었습니다.');
-    } else if (direction === 'down' && currentIndex < list.length - 1) {
-      const temp = list[currentIndex];
-      list[currentIndex] = list[currentIndex + 1];
-      list[currentIndex + 1] = temp;
-      onUpdateItinerary(list);
-      onShowToast('일정 순서가 아래로 이동되었습니다.');
-    }
+    const reordered = [...dayItems];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    reordered[0] = { ...reordered[0], startTime: dayItems[0].startTime };
+    const recalculated = recalculateCascade(reordered);
+
+    // Put the day's items back into the slots that day occupied, leaving other days untouched.
+    let next = 0;
+    onUpdateItinerary(allItinerary.map((i) => (i.day === item.day ? recalculated[next++] : i)));
+    onShowToast(
+      `일정 순서가 ${direction === 'up' ? '위' : '아래'}로 이동되고 Day ${item.day} 시간이 다시 계산되었습니다.`
+    );
   };
 
   const handleCascadeCascade = () => {
@@ -364,7 +369,9 @@ export const ItineraryTab: React.FC<ItineraryTabProps> = ({
         ) : (
           activeItems.map((item, idx) => {
             const isBackup = selectedDay === 'backup';
-            const isEditing = editingId === item.id;
+            const sameDayItems = isBackup ? [] : allItinerary.filter((i) => i.day === item.day);
+            const isFirstOfDay = sameDayItems[0]?.id === item.id;
+            const isLastOfDay = sameDayItems[sameDayItems.length - 1]?.id === item.id;
 
             return (
               <div
@@ -396,7 +403,7 @@ export const ItineraryTab: React.FC<ItineraryTabProps> = ({
                         <span>{item.startTime}</span>
                       </span>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                        Day {item.day} · {idx + 1}번째
+                        Day {item.day} · {isBackup ? idx + 1 : sameDayItems.findIndex((i) => i.id === item.id) + 1}번째
                       </span>
                     </div>
                   </div>
@@ -407,14 +414,16 @@ export const ItineraryTab: React.FC<ItineraryTabProps> = ({
                       <>
                         <button
                           onClick={() => handleMoveOrder(item.id, 'up')}
-                          className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800/80 hover:bg-slate-800 transition"
+                          disabled={isFirstOfDay}
+                          className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800/80 hover:bg-slate-800 transition disabled:opacity-30 disabled:pointer-events-none"
                           title="위로 이동"
                         >
                           <ArrowUp className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleMoveOrder(item.id, 'down')}
-                          className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800/80 hover:bg-slate-800 transition"
+                          disabled={isLastOfDay}
+                          className="p-1.5 text-slate-400 hover:text-white rounded-lg bg-slate-800/80 hover:bg-slate-800 transition disabled:opacity-30 disabled:pointer-events-none"
                           title="아래로 이동"
                         >
                           <ArrowDown className="w-3.5 h-3.5" />
@@ -444,6 +453,14 @@ export const ItineraryTab: React.FC<ItineraryTabProps> = ({
                         ))}
                       </div>
                     )}
+
+                    <button
+                      onClick={() => onOpenEditItem(item, isBackup)}
+                      className="p-1.5 text-amber-400 hover:text-amber-300 rounded-lg bg-slate-800/80 hover:bg-slate-800 transition"
+                      title="일정 수정"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
 
                     <button
                       onClick={() => handleDeleteItem(item.id, isBackup)}
