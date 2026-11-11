@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
-import { X, Plus, MapPin } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, Plus, MapPin, Pencil } from 'lucide-react';
 import { ScheduleItem, DayNumber } from '../types';
 
 interface AddItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultDay: DayNumber;
+  // When set, the modal edits this item instead of creating a new one.
+  editItem?: ScheduleItem | null;
   onAdd: (item: ScheduleItem) => void;
+  onSave?: (item: ScheduleItem) => void;
   onShowToast: (msg: string) => void;
 }
 
@@ -14,7 +17,9 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
   isOpen,
   onClose,
   defaultDay,
+  editItem,
   onAdd,
+  onSave,
   onShowToast,
 }) => {
   const [day, setDay] = useState<DayNumber>(defaultDay);
@@ -32,12 +37,56 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
   const [cilantroWarning, setCilantroWarning] = useState(false);
   const [beerSpecial, setBeerSpecial] = useState(false);
 
+  // Reset the form every time the modal opens (prefilled when editing).
+  useEffect(() => {
+    if (!isOpen) return;
+    setDay(editItem?.day ?? defaultDay);
+    setTitle(editItem?.title ?? '');
+    setTitleCn(editItem?.titleCn ?? '');
+    setPinyin(editItem?.pinyin ?? '');
+    setCategory(editItem?.category ?? 'attraction');
+    setStartTime(editItem?.startTime ?? '14:00');
+    setDurationMinutes(editItem?.durationMinutes ?? 60);
+    setTransitMinutes(editItem?.transitMinutes ?? 20);
+    setEstimatedCostCny(editItem?.estimatedCostCny ?? 0);
+    setDesc(editItem?.desc ?? '');
+    setAddressCn(editItem?.addressCn ?? '');
+    setTips(editItem?.tips ?? '');
+    setCilantroWarning(Boolean(editItem?.badges.cilantroWarning));
+    setBeerSpecial(Boolean(editItem?.badges.beerSpecial));
+  }, [isOpen, editItem, defaultDay]);
+
   if (!isOpen) return null;
+
+  const isEdit = Boolean(editItem);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       onShowToast('일정 제목을 입력해주세요.');
+      return;
+    }
+
+    if (editItem) {
+      // Keep completion, notes, attachments, coordinates and other badges as they were.
+      const updated: ScheduleItem = {
+        ...editItem,
+        day,
+        startTime: startTime || editItem.startTime,
+        durationMinutes: Number(durationMinutes) || 60,
+        transitMinutes: Number(transitMinutes) || 0,
+        title: title.trim(),
+        titleCn: titleCn.trim() || title.trim(),
+        category,
+        desc: desc.trim(),
+        estimatedCostCny: Number(estimatedCostCny) || 0,
+        addressCn: addressCn.trim() || titleCn.trim() || editItem.addressCn,
+        tips: tips.trim(),
+        badges: { ...editItem.badges, cilantroWarning, beerSpecial },
+      };
+      onSave?.(updated);
+      onShowToast(`"${updated.title}" 일정이 수정되었습니다.`);
+      onClose();
       return;
     }
 
@@ -90,11 +139,15 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
 
         <div className="flex items-center gap-2">
           <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
-            <Plus className="w-5 h-5" />
+            {isEdit ? <Pencil className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-100">새 일정 추가</h2>
-            <p className="text-xs text-slate-400">원하는 장소나 맛집을 직접 일정표에 추가하세요.</p>
+            <h2 className="text-base font-bold text-slate-100">{isEdit ? '일정 수정' : '새 일정 추가'}</h2>
+            <p className="text-xs text-slate-400">
+              {isEdit
+                ? '완료 체크, 개인 메모, 첨부 사진은 그대로 유지됩니다.'
+                : '원하는 장소나 맛집을 직접 일정표에 추가하세요.'}
+            </p>
           </div>
         </div>
 
@@ -176,7 +229,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
           </div>
 
           {/* Time & Durations */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <label className="text-slate-300 font-semibold">시작 시간</label>
               <input
@@ -198,6 +251,17 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
               />
             </div>
             <div className="space-y-1">
+              <label className="text-slate-300 font-semibold">다음 장소까지 이동 (분)</label>
+              <input
+                type="number"
+                min={0}
+                step={5}
+                value={transitMinutes}
+                onChange={(e) => setTransitMinutes(Number(e.target.value))}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-2 text-slate-200 text-center focus:outline-none focus:border-amber-400"
+              />
+            </div>
+            <div className="space-y-1">
               <label className="text-slate-300 font-semibold">예상비용(¥)</label>
               <input
                 type="number"
@@ -210,6 +274,17 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
           </div>
 
           {/* Description & Tips */}
+          <div className="space-y-1">
+            <label className="text-slate-300 font-semibold">설명</label>
+            <textarea
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              rows={2}
+              placeholder="예: 바다 위로 뻗은 잔교, 칭다오의 상징"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-400 resize-none"
+            />
+          </div>
+
           <div className="space-y-1">
             <label className="text-slate-300 font-semibold">메모 / 꿀팁</label>
             <input
@@ -255,7 +330,7 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
               type="submit"
               className="py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl transition shadow-lg"
             >
-              일정 등록하기
+              {isEdit ? '수정 저장하기' : '일정 등록하기'}
             </button>
           </div>
         </form>

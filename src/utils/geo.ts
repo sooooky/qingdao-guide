@@ -14,12 +14,18 @@ export function minutesToTime(minutes: number): string {
 }
 
 export function recalculateCascade(items: ScheduleItem[]): ScheduleItem[] {
-  return items.map((item, idx) => {
-    if (idx === 0) return item;
-    const prev = items[idx - 1];
+  const result: ScheduleItem[] = [];
+  items.forEach((item, idx) => {
+    if (idx === 0) {
+      result.push(item);
+      return;
+    }
+    // Chain from the already-recalculated previous item, not its old start time.
+    const prev = result[idx - 1];
     const prevEnd = timeToMinutes(prev.startTime) + (prev.durationMinutes || 60) + (prev.transitMinutes || 15);
-    return { ...item, startTime: minutesToTime(prevEnd) };
+    result.push({ ...item, startTime: minutesToTime(prevEnd) });
   });
+  return result;
 }
 
 export function calculateDistanceKm(lat1?: number, lon1?: number, lat2?: number, lon2?: number): number {

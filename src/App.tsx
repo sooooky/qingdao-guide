@@ -169,6 +169,7 @@ export default function App() {
   const [isVaultOpen, setIsVaultOpen] = useState(false);
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
   const [addItemDay, setAddItemDay] = useState<DayNumber>(1);
+  const [editTarget, setEditTarget] = useState<{ item: ScheduleItem; isBackup: boolean } | null>(null);
   const [taxiModalData, setTaxiModalData] = useState<{
     title: string;
     cnText: string;
@@ -387,6 +388,29 @@ export default function App() {
     if (Array.isArray(imported.members) && imported.members.length > 0) setMembers(imported.members);
   };
 
+  const handleSaveEditedItem = (updated: ScheduleItem) => {
+    if (editTarget?.isBackup) {
+      setBackupPool((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      return;
+    }
+    setAllItinerary((prev) => {
+      const original = prev.find((i) => i.id === updated.id);
+      if (!original || original.day === updated.day) {
+        return prev.map((i) => (i.id === updated.id ? updated : i));
+      }
+      // Day changed: move the item after the last item of its new day.
+      const rest = prev.filter((i) => i.id !== updated.id);
+      let insertAt = rest.length;
+      for (let idx = rest.length - 1; idx >= 0; idx--) {
+        if (rest[idx].day === updated.day) {
+          insertAt = idx + 1;
+          break;
+        }
+      }
+      return [...rest.slice(0, insertAt), updated, ...rest.slice(insertAt)];
+    });
+  };
+
   // Total attachments across all items for header counter
   const totalVaultCount = allItinerary.reduce(
     (acc, item) => acc + (item.attachments?.length || 0),
@@ -514,7 +538,12 @@ export default function App() {
               setViewerData({ attachment, scheduleTitle, onDelete })
             }
             onOpenAddItem={(day) => {
+              setEditTarget(null);
               setAddItemDay(day);
+              setIsAddItemOpen(true);
+            }}
+            onOpenEditItem={(item, isBackup) => {
+              setEditTarget({ item, isBackup });
               setIsAddItemOpen(true);
             }}
             onShowToast={showToast}
@@ -672,9 +701,14 @@ export default function App() {
       {/* Add Custom Schedule Item Modal */}
       <AddItemModal
         isOpen={isAddItemOpen}
-        onClose={() => setIsAddItemOpen(false)}
+        onClose={() => {
+          setIsAddItemOpen(false);
+          setEditTarget(null);
+        }}
         defaultDay={addItemDay}
-        onAdd={(item) => setAllItinerary([...allItinerary, item])}
+        editItem={editTarget?.item}
+        onAdd={(item) => setAllItinerary((prev) => [...prev, item])}
+        onSave={handleSaveEditedItem}
         onShowToast={showToast}
       />
 
